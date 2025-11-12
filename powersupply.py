@@ -11,3 +11,5 @@ class PowerSupply:
     def __init__(self, port='/dev/ttyUSB0', baudrate=115200):
         self.port = serial.Serial(port=port, baudrate=baudrate, timeout=1)
 
+if __name__ == '__main__':
+    powersupply = PowerSupply(port='/dev/ttyUSB0')
