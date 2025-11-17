@@ -1,4 +1,5 @@
-import RPi.GPIO as GPIO
+from tkinter import *
+# import RPi.GPIO as GPIO
 import time
 import threading
 import logging
@@ -6,7 +7,7 @@ import logging.handlers
 
 # Equipments information
 equipment_name = 'TS111125'
-sw_version = 'v25.11.12'
+sw_version = 'v25.11.17'
 
 # Log handler
 logger = logging.getLogger('SpinCheck')
@@ -24,7 +25,22 @@ disable_color = '#f3f3f3'
 root_bg_color = '#ff9999'
 frame_bg_color = '#ffffff'
 
+class GUI(Tk):
+    def __init__(self):
+        logger.info('Initializing TkInter')
+        super().__init__()
+        logger.info('Drawing GUI')
+        self.__draw__()
+
+    def __draw__(self):
+        self.title(f'{equipment_name}_{sw_version}')
+        self['bg'] = root_bg_color
+        self['width'] = 800
+        self['height'] = 400
 
 
-GPIO.setmode(GPIO.BCM)
-GPIO.setwarnings(False)
+if __name__ == '__main__':
+    logger.info('Initializing GUI')
+    app = GUI()
+    logger.info('Running GUI mainloop')
+    app.mainloop()
