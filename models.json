@@ -1,0 +1,14 @@
+{
+    "ac_dummy": {
+        "name": "ac_dummy",
+        "motor_type": "ac",
+        "voltage": 24.0,
+        "frequency": 50.0
+    },
+    "dc_dummy": {
+        "name": "dc_dummy",
+        "motor_type": "dc",
+        "voltage": 1.25,
+        "frequency": 62.5
+    }
+}
