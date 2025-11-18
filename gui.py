@@ -7,7 +7,7 @@ import logging.handlers
 
 # Equipments information
 equipment_name = 'TS111125'
-sw_version = 'v25.11.17'
+sw_version = 'v25.11.18'
 
 # Log handler
 logger = logging.getLogger('SpinCheck')
