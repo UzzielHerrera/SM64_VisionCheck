@@ -1,21 +1,20 @@
 from tkinter import *
-# import RPi.GPIO as GPIO
 import time
 import threading
 import logging
-import logging.handlers
 
 # Equipments information
 equipment_name = 'TS111125'
 sw_version = 'v25.11.18'
 
-# Log handler
+# Log handler setup
 logger = logging.getLogger('SpinCheck')
-logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler()
-formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+if not logger.handlers:
+    logger.setLevel(logging.DEBUG)
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
 # Color constants
 pass_color = '#57da50'

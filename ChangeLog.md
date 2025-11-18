@@ -4,13 +4,14 @@
 
 ## Added
 
-* **Initial Power Supply Control Module.**
-* Created an extensible, object-oriented architecture for handling power supplies.
-* Implemented Abstract Base Classes (ABCs) (`PowerSource`, `ACSource`, `DCSource`) to define a standard "contract" for all future power supply drivers.
-* Added a `BK_Serial` base class to hold all common RS232 logic for BK Precision models, eliminating code duplication.
-* Added initial drivers for:
-    * **`BK9801`** (AC Source)
-    * **`BK9201`** (DC Source)
+* **Created new Hardware Abstraction Layer (HAL) modules.**
+* This new architecture separates all hardware control from the main test logic.
+* Added **`powersupply.py`** to manage power generation:
+    * Includes `PowerSource`, `ACSource`, `DCSource` abstract classes.
+    * Contains implementations for `BK_Serial`, `BK9801`, and `BK9201`.
+* Added **`motordriver.py`** to manage power application:
+    * Includes `MotorDriver` abstract class.
+    * Contains implementations for `ACDriver` (relay) and the threaded `DCDriver` (H-bridge).
 
 ## v25.11.17
 
