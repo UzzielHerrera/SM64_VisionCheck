@@ -2,6 +2,7 @@
 
 ## V25.11.19
 ### Added
+* Added Readme.md file to document test sequence procedure and goal
 * **Core Test FSM Logic (`test.py`)**
   * Implemented the final, highly robust test sequencer architecture within the new `test.py` module.
   * The worker thread now operates as a **Persistent Worker Thread** in a continuous loop, ready for multiple test cycles.
