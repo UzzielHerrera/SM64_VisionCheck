@@ -3,7 +3,7 @@ import os
 import logging
 import logging.handlers
 
-# Log handler setup
+# --- Log handler setup
 logger = logging.getLogger('SpinCheck')
 if not logger.handlers:
     logger.setLevel(logging.DEBUG)
@@ -13,11 +13,19 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 class MotorModel:
-    def __init__(self, name, motor_type, voltage, frequency=0):
+    def __init__(self, name, motor_type, voltage, max_current=0.0, frequency=0.0, calibration_table = []):
         self.name = name
         self.motor_type = motor_type
         self.voltage = voltage
+        self.max_current = max_current
         self.frequency = frequency
+        self.calibration_table = calibration_table if calibration_table is not None else []
+
+    def __repr__(self):
+        # Updated string representation
+        return (f"<MotorModel name='{self.name}' type='{self.motor_type}' "
+                f"V={self.voltage} A={self.max_current} Hz={self.frequency} "
+                f"Table_Steps={len(self.calibration_table)}>")
 
 class ModelManager:
     def __init__(self, filename='models.json'):
@@ -46,14 +54,41 @@ class ModelManager:
     def get_model(self, name):
         return self.models.get(name)
 
-    def add_model(self, name, motor_type, voltage, frequency):
-        self.models[name] = MotorModel(name, motor_type, voltage, frequency)
+    def add_model(self, name, motor_type, voltage, max_current, frequency, calibration_table):
+        self.models[name] = MotorModel(name, motor_type, voltage, max_current, frequency, calibration_table)
         self.save_all()
 
     def get_all_names(self):
         return list(self.models.keys())
 
+    def delete_model(self, name):
+        if name in self.models:
+            del self.models[name]
+            logger.info(f'Model {name} deleted successfully')
+            self.save_all()
+            return True
+        else:
+            logger.warning(f'Model {name} not found in models')
+            return False
+
 if __name__ == '__main__':
     m = ModelManager('models.json')
-    # m.add_model('dc_dummy', 'dc', 1.25, 62.5)
-    print(m.get_all_names())
+
+    # 1. Add a dummy model to demonstrate deletion
+    if 'model_to_delete' not in m.get_all_names():
+        m.add_model('model_to_delete', 'ac', 10.0, 1.5, 60.0, [])
+        print(f"Added 'model_to_delete'. Current models: {m.get_all_names()}")
+
+    # 2. Demonstrate Deletion
+    print("\n--- Deleting 'model_to_delete' ---")
+    m.delete_model('model_to_delete')
+    print(f"Models after deletion: {m.get_all_names()}")
+
+    # 3. Attempt to delete a non-existent model
+    print("\n--- Deleting 'nonexistent_model' ---")
+    m.delete_model('nonexistent_model')
+
+    # If you have an existing model, this prints it
+    model = m.get_model('ac_dummy')
+    if model:
+        print(model)

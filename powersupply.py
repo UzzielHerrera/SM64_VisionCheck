@@ -4,7 +4,7 @@ import time
 import logging
 import logging.handlers
 
-# Log handler setup
+# --- Log handler setup
 logger = logging.getLogger('SpinCheck')
 if not logger.handlers:
     logger.setLevel(logging.DEBUG)
@@ -13,7 +13,7 @@ if not logger.handlers:
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-# Power source contract
+# --- Power source contract
 class PowerSource(ABC):
     @abstractmethod
     def request_control(self):
@@ -48,7 +48,7 @@ class PowerSource(ABC):
         pass
 
 
-# AC source contract
+# --- AC source contract
 class ACSource(PowerSource):
     @abstractmethod
     def set_frequency(self, hertz: float= 0.0):
@@ -59,12 +59,12 @@ class ACSource(PowerSource):
         pass
 
 
-# DC source contract
+# --- DC source contract
 class DCSource(PowerSource):
     pass
 
 
-# BK common serial interface
+# --- BK common serial interface
 class BK_Serial(PowerSource):
     def __init__(self, port: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -120,21 +120,6 @@ class BK_Serial(PowerSource):
             logger.error(e)
             return 0.0
 
-    def set_max_current(self, amps: float = 0.0):
-        """
-        This command is used to set the RMS current protection point (Irms-Protect).
-        :param amps: amperage in amps
-        :return:
-        """
-        self._send_command(f'CONF:PROT:CURR:RMS {amps:0.2f}')
-
-    def get_max_current(self):
-        try:
-            return float(self._send_command(f'CONF:PROT:CURR:RMS?'))
-        except Exception as e:
-            logger.error(e)
-            return 0.0
-
     def enable_output(self):
         """
         This command is used to drive the output relay of the power supply to ON.
@@ -150,7 +135,7 @@ class BK_Serial(PowerSource):
         self._send_command('OUTP 0')
 
 
-# BK9801 serial interface
+# --- BK9801 serial interface
 class BK9801(ACSource, BK_Serial):
     def __init__(self, port: str):
         super().__init__(port=port)
@@ -170,10 +155,40 @@ class BK9801(ACSource, BK_Serial):
             logger.error(e)
             return 0.0
 
-# BK9201 serial interface
+    def set_max_current(self, amps: float = 0.0):
+        """
+        This command is used to set the RMS current protection point (Irms-Protect).
+        :param amps: amperage in amps
+        :return:
+        """
+        self._send_command(f'CONF:PROT:CURR:RMS {amps:0.2f}')
+
+    def get_max_current(self):
+        try:
+            return float(self._send_command(f'CONF:PROT:CURR:RMS?'))
+        except Exception as e:
+            logger.error(e)
+            return 0.0
+
+# --- BK9201 serial interface
 class BK9201(DCSource, BK_Serial):
     def __init__(self, port: str):
         super().__init__(port=port)
+
+    def set_max_current(self, amps: float = 0.0):
+        """
+        This command is used to set the current protection point (I-Protect).
+        :param amps: amperage in amps
+        :return:
+        """
+        self._send_command(f'CURR {amps:0.2f}')
+
+    def get_max_current(self):
+        try:
+            return float(self._send_command(f'CURR?'))
+        except Exception as e:
+            logger.error(e)
+            return 0.0
 
 
 if __name__ == '__main__':
