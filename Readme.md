@@ -23,7 +23,7 @@ The system operates using a Persistent Worker Thread Architecture (non-GUI threa
 
 ***
 
-## ⚙️ Test Execution Lifecycle (The Flow)
+## ⚙️ Test Execution Lifecycle
 
 The system operates using a Persistent Worker Thread Architecture that runs the core test logic in a continuous loop.
 
