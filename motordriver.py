@@ -22,10 +22,6 @@ except (ImportError, RuntimeError):
         def setwarnings(self, *args, **kwargs): print(f"MOCK_GPIO: setwarnings({args}, {kwargs})")
     GPIO = MockGPIO()
 
-# --- GPIO initial configuration
-GPIO.setwarnings(False)
-GPIO.setmode(GPIO.BOARD)
-
 # --- Log handler setup
 logger = logging.getLogger('SpinCheck')
 if not logger.handlers:
@@ -54,6 +50,7 @@ class MotorDriver(ABC):
 class ACDriver(MotorDriver):
     def __init__(self, ac_relay_pin: int) -> None:
         self.relay_pin = ac_relay_pin
+        # --- GPIO initial configuration
         GPIO.setup(self.relay_pin, GPIO.OUT)
         self.remove_power()
         logger.info(f'ACDriver: initialized on pin {self.relay_pin}')
@@ -78,6 +75,7 @@ class DCDriver(MotorDriver):
         self.pos_pin = h_bridge_pos_pin
         self.neg_pin = h_bridge_neg_pin
 
+        # --- GPIO initial configuration
         self.pins = [self.relay_pin, self.en_pin, self.pos_pin, self.neg_pin]
         for pin in self.pins:
             GPIO.setup(pin, GPIO.OUT)

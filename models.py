@@ -54,8 +54,8 @@ class ModelManager:
     def get_model(self, name):
         return self.models.get(name)
 
-    def add_model(self, name, motor_type, voltage, max_current, frequency, calibration_table):
-        self.models[name] = MotorModel(name, motor_type, voltage, max_current, frequency, calibration_table)
+    def add_model(self, new_model: MotorModel):
+        self.models[new_model.name] = new_model
         self.save_all()
 
     def get_all_names(self):
@@ -76,7 +76,8 @@ if __name__ == '__main__':
 
     # 1. Add a dummy model to demonstrate deletion
     if 'model_to_delete' not in m.get_all_names():
-        m.add_model('model_to_delete', 'ac', 10.0, 1.5, 60.0, [])
+        new_model = MotorModel('model_to_delete', 'ac', 10.0, 1.5, 60.0, [])
+        m.add_model(new_model)
         print(f"Added 'model_to_delete'. Current models: {m.get_all_names()}")
 
     # 2. Demonstrate Deletion

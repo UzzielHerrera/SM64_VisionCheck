@@ -29,7 +29,6 @@ except (ImportError, RuntimeError):
         def setwarnings(self, *args, **kwargs): pass
     GPIO = MockGPIO()
 
-
 # Log handler setup
 logger = logging.getLogger('SpinCheck')
 if not logger.handlers:
@@ -52,7 +51,11 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
     :param model_queue:
     :return:
     """
+    if not isinstance(stop_flag, Event):
+        logger.error('Stop flag must be an Event.')
+        return
 
+    logger.info('FSM: starting finite state machine')
     # --- FSM state variables
     current_model = initial_model
     source_controller: PowerSource = None
@@ -60,19 +63,33 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
     source_is_active = False
 
     # --- Thread-sage recording variables
+    calibration_table = []
     edge_record = []
     last_pin_state = None
     start_time = time.time()
     gui_update_time = time.time()
 
+
+    # --- GPIO config
+    current_mode = GPIO.getmode()
+
+    if current_mode is None:
+        GPIO.setmode(GPIO.BCM)
+    elif current_mode != GPIO.BCM:
+        logger.warning(f"FSM: GPIO forcing cleanup and setmode")
+        GPIO.cleanup()
+        GPIO.setmode(GPIO.BCM)
+    else:
+        pass
+
+    GPIO.setup(PINS.START_SIGNAL, GPIO.IN)
+    GPIO.setup(PINS.SENSOR, GPIO.IN)
+    GPIO.setup(PINS.BUSY_SIGNAL, GPIO.OUT)
+    GPIO.setup(PINS.OK_SIGNAL, GPIO.OUT)
+
+
     # --- Thread level setup and cleanup
     try:
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(PINS.START_SIGNAL, GPIO.IN)
-        GPIO.setup(PINS.SENSOR, GPIO.IN)
-        GPIO.setup(PINS.BUSY_SIGNAL, GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(PINS.OK_SIGNAL, GPIO.OUT, initial=GPIO.LOW)
-
         # --- System infinite loop
         while True:
             # --- Per Test Variables
@@ -84,55 +101,70 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
             try:
                 while test_in_progress:
                     if stop_flag.is_set():
+                        logger.info('FSM: stop flag active')
                         current_state = 'TEST_CANCEL'
 
                     # --- Model check state
-                    elif current_state == 'MODEL_CHECK':
-                        new_model = None
+                    if current_state == 'MODEL_CHECK':
+                        new_model = '0'
 
                         # get new model from the queue
                         try:
                             new_model = model_queue.get_nowait()
+                            logger.info(f'FSM: new model: {new_model}')
                         except Empty:
+                            logger.info('FSM: model queue empty')
                             pass
 
                         # check if model has been changed
-                        if new_model and new_model != current_model:
-                            logger.info(f'Model changed to {new_model.name}')
+                        if new_model != '0' and new_model != current_model:
 
                             # driver cleanup
-                            if source_controller: source_controller.cleanup()
-                            if motor_driver: motor_driver.cleanup()
+                            if source_controller is not None: source_controller.cleanup()
+                            if motor_driver is not None: motor_driver.cleanup()
+
+                            if new_model is None:
+                                logger.info('FSM: shutting down finiste state machine')
+                                return
+
+                            logger.info(f'FSM: changing model to {new_model.name}')
 
                             # new model selection
                             current_model = new_model
                             source_controller = None
                             motor_driver = None
                             source_is_active = False
-                            gui_queue.put(f'select:{current_model}')
-                        current_state = 'START'
+
+                        if not source_is_active:
+                            current_state = 'MODEL_LOAD'
+                        else :
+                            current_state = 'TEST_WAITING'
 
                     # --- Start state
-                    elif current_state == 'START':
-                        gui_queue.put(f'init:{current_model}')
+                    elif current_state == 'MODEL_LOAD':
+                        gui_queue.put(f'model:{current_model.name}')
                         calibration_table = current_model.calibration_table
 
                         # create drivers only if none
                         if source_controller is None:
                             # load dc model to source controller and motor driver
-                            if current_model.motor_type == 'DC':
+                            if current_model.motor_type.lower() == 'dc':
+                                logger.info(f'FSM: attaching BK9201 to source controller')
                                 source_controller = BK9201(port=PORTS.DC_PSU_PORT)
+                                logger.info(f'FSM: attaching DCDriver to motor driver')
                                 motor_driver = DCDriver(PINS.DC_RELAY, PINS.H_BRIDGE_ENABLE, PINS.H_BRIDGE_POS, PINS.H_BRIDGE_NEG)
 
                             # load ac model to source controller and motor driver
-                            elif current_model.motor_type == 'AC':
+                            elif current_model.motor_type.lower() == 'ac':
+                                logger.info(f'FSM: attaching BK9801 to source controller')
                                 source_controller = BK9801(port=PORTS.AC_PSU_PORT)
+                                logger.info(f'FSM: attaching ACDriver to motor driver')
                                 motor_driver = ACDriver(PINS.AC_RELAY)
 
-                        current_state = 'SETTING_SOURCE'
+                        current_state = 'MODEL_SETTING'
 
                     # --- Setting source state
-                    elif current_state == 'SETTING_SOURCE':
+                    elif current_state == 'MODEL_SETTING':
                         # enables remote control and turn source output off
                         source_controller.request_control()
 
@@ -149,21 +181,23 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                             if stop_flag.wait(PARAMS.PSU_STABILIZE_SEC): continue
                             source_is_active = True
 
-                        current_state = 'WAITING_START'
+                        current_state = 'TEST_WAITING'
 
                     # --- Waiting start state
-                    elif current_state == 'WAITING_START':
-                        gui_queue.put('waiting:starton')
+                    elif current_state == 'TEST_WAITING':
+                        gui_queue.put('waiting:testinit')
+
                         while not stop_flag.is_set():
 
                             # look up for start signal
-                            if GPIO.input(PINS.START_SIGNAL) == GPIO.HIGH:
-                                GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
-                                current_state = 'TEST_INIT'
+                            # if GPIO.input(PINS.START_SIGNAL) == GPIO.HIGH:
+                            #     GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
+                            #     current_state = 'TEST_INIT'
 
                             # look up for model change
                             try:
                                 if not model_queue.empty():
+                                    logger.info('FSM: new model received')
                                     current_state = 'MODEL_CHECK'
                                     break
                             except Exception:
@@ -267,13 +301,14 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
 
                         test_in_progress = False
 
+
                     # --- Test timeout state
                     elif current_state == 'TEST_TIMEOUT':
                         # clean up motor driver
                         if motor_driver: motor_driver.cleanup()
 
                         logger.warning(f'FSM: test cancelled by user')
-                        gui_queue.put(f'cancelled:by_user')
+                        gui_queue.put(f'cancelled:timeout')
 
                         GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
                         GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
@@ -283,7 +318,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
             # --- Test exception handler
             except Exception as e:
                 logger.error(f'FSM: {e}', exc_info=True)
-                gui_queue.put(f'error:{current_model}')
+                gui_queue.put(f'error:{current_model.name}')
 
             # --- Test finally cleanup
             finally:

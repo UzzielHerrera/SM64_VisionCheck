@@ -1,8 +1,8 @@
-from abc import ABC, abstractmethod
 import serial
-import time
 import logging
-import logging.handlers
+import time
+from abc import ABC, abstractmethod
+from config import PORTS
 
 # --- Log handler setup
 logger = logging.getLogger('SpinCheck')
@@ -69,27 +69,35 @@ class BK_Serial(PowerSource):
     def __init__(self, port: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
         try:
-            self.serial = serial.Serial(port=port, baudrate=9600, timeout=1)
-            logger.info(f'Serial port opened to {port}')
+            self.serial = serial.Serial(port=port, baudrate=115200, timeout=0.5)
+            logger.info(f'PS: serial port opened to {port}')
         except Exception as e:
             logger.error(e)
-            logger.critical('Using mock serial port')
+            logger.critical('PS: using mock serial port')
             self.serial = None
 
     def _send_command(self, command: str):
         try:
             self.serial.reset_input_buffer()
-            self.serial.write(command.encode('utf-8') + b'\r\n')
+            command += '\r\n'
+            self.serial.write(command.encode('utf-8'))
             response = self.serial.readline().decode('utf-8').strip()
 
             if not response:
-                logger.error(f'TimeOut: data_transmitted->"{command}"')
+                logger.error(f'PS: timeout data transmitted->"{command[:-2]}"')
                 return 0
             else:
                 return response
         except Exception as e:
             logger.error(e)
             return 0
+
+    def close_serial(self):
+        try:
+            if self.serial.is_open():
+                self.serial.close()
+        except Exception as e:
+            logger.error("PS: Serial port closed")
 
     def request_control(self):
         """
@@ -103,7 +111,9 @@ class BK_Serial(PowerSource):
         This command is used to clear the error codes and information.
         :return:
         """
+        self.disable_output()
         self._send_command('SYST:CLE')
+        self.close_serial()
 
     def set_voltage(self, volts: float = 0.0):
         """
@@ -192,5 +202,22 @@ class BK9201(DCSource, BK_Serial):
 
 
 if __name__ == '__main__':
-    dc = BK9201('COM4')
-    ac = BK9801('COM5')
+    dc = BK9201(PORTS.DC_PSU_PORT)
+    dc.request_control()
+    dc.set_voltage(1.25)
+    dc.set_max_current(0.05)
+    dc.enable_output()
+    time.sleep(3.0)
+    dc.disable_output()
+
+
+    ac = BK9801(PORTS.AC_PSU_PORT)
+    ac.request_control()
+    ac.set_voltage(12.0)
+    ac.set_max_current(0.2)
+    print(ac.get_voltage())
+    ac.set_frequency(60.0)
+    ac.enable_output()
+    time.sleep(3.0)
+    ac.disable_output()
+
