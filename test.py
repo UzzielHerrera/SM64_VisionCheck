@@ -254,7 +254,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
 
                         # update gui
                         if (time.time() - gui_update_time) > PARAMS.GUI_UPDATE_TIMEOUT_SEC:
-                            gui_queue.put(f'testing:{len(edge_record)},{current_pin_state}')
+                            gui_queue.put(f'record:{len(edge_record)}>{current_pin_state}')
                             gui_update_time = time.time()
 
                         # mpu yield delay
@@ -262,23 +262,23 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
 
                     # --- Test stop state
                     elif current_state == 'TEST_STOP':
-                        gui_queue.put(f'de-energizing')
+                        gui_queue.put('de-energizing')
                         motor_driver.remove_power()
                         current_state = 'TEST_ANALYZE'
 
                     # --- Test analyze state
                     elif current_state == 'TEST_ANALYZE':
-                        gui_queue.put(f'analyzing')
+                        gui_queue.put('analyzing')
 
                         is_pass = motor_analyze(edge_record, current_model.calibration_table)
 
                         if is_pass:
-                            gui_queue.put(f'passed')
+                            gui_queue.put('passed')
                             GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
                             if stop_flag.wait(PARAMS.PASS_WAIT_SEC): continue
                             GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
                         else:
-                            gui_queue.put(f'failed')
+                            gui_queue.put('failed')
                             GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
                             GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
 
@@ -294,7 +294,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                         if motor_driver: motor_driver.cleanup()
 
                         logger.warning(f'FSM: test cancelled by user')
-                        gui_queue.put(f'cancelled:by_user')
+                        gui_queue.put('cancelled:by_user')
 
                         GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
                         GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
@@ -318,7 +318,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
             # --- Test exception handler
             except Exception as e:
                 logger.error(f'FSM: {e}', exc_info=True)
-                gui_queue.put(f'error:{current_model.name}')
+                gui_queue.put(f'error:{e}')
 
             # --- Test finally cleanup
             finally:

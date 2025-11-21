@@ -1,9 +1,21 @@
 # SM64 Change Log
 
+## V25.11.20
+## Added
+
+* **Created Main User Interface Module (`gui.py`).**
+* Implemented the primary Tkinter-based Graphical User Interface for the test.
+* **Key Features:**
+    * **Real-time Status:** Visual feedback for test states (READY, TESTING, PASS, FAIL) with color-coded indicators.
+    * **Model Management:** Integrated `ModelManagement` popup window to Create, Save, and Delete motor profiles directly from the UI.
+    * **Thread Orchestration:** Automatically initializes and manages the persistent FSM worker thread and a console input thread.
+    * **Queue Polling:** Implemented a non-blocking `check_queue` loop to update the UI based on asynchronous worker messages.
+    * **Safety:** Handles graceful shutdown, ensuring the worker thread and hardware drivers are stopped safely when the window is closed.
+
 ## V25.11.19
 ### Added
 * Added Readme.md file to document test sequence procedure and goal
-* **Core Test FSM Logic (`test.py`)**
+* **Created Core Test FSM Logic (`test.py`)**
   * Implemented the final, highly robust test sequencer architecture within the new `test.py` module.
   * The worker thread now operates as a **Persistent Worker Thread** in a continuous loop, ready for multiple test cycles.
   * Integrated all core features: Dynamic profile switching, waiting for external start signal, managing Busy and OK signals, and executing final cleanup routines.

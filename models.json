@@ -14,5 +14,13 @@
         "max_current": 0.05,
         "frequency": 60,
         "calibration_table": []
+    },
+    "023304032": {
+        "name": "023304032",
+        "motor_type": "DC",
+        "voltage": 1.25,
+        "max_current": 0.2,
+        "frequency": 62.5,
+        "calibration_table": []
     }
 }

@@ -23,9 +23,12 @@ if not logger.handlers:
 # Color constants
 pass_color = '#57da50'
 fail_color = '#ff3300'
+fail_text_color = '#ffffff'
 process_color = '#ffcc00'
 disable_color = '#f3f3f3'
-root_bg_color = '#f0f0f0'
+disable_text_color = '#888888'
+ready_text_color = '#000000'
+root_bg_color = '#A3D0FF'
 frame_bg_color = '#ffffff'
 text_color = '#333333'
 
@@ -120,61 +123,95 @@ class GUI(Tk):
 
 
     def __draw__(self):
+        # --- Variables
+        screen_width = 800
+        screen_height = 400
+
+        offset = 15
+        header_width = screen_width - 2 * offset
+        header_height = 40
+
+        main_y = offset + header_height + offset
+        main_height = screen_height - main_y - offset
+
+        model_width = int((screen_width - 3 * offset) / 2)
+        model_height = main_height - 150
+
+        status_width = int((screen_width - 3 * offset) / 2)
+        status_height = main_height
+
+        inner_offset = 15
+        state_offset = 4 * inner_offset
+        state_width = status_width - 2 * state_offset
+        state_height = 200
+
+        command_height = status_height - offset - model_height
+
+
+        title_font = ("Arial", 22, "bold")
+        subtitle_font = ("Arial", 16)
+        text_font = ("Arial", 12)
+
+        # --- Main windows settings
         self.title(f'{equipment_name}_{sw_version}->AutomaticTest')
         self['bg'] = root_bg_color
-        self['width'] = 800
-        self['height'] = 400
+        self['width'] = screen_width
+        self['height'] = screen_height
 
-        # Main Container
-        main_frame = Frame(self, bg=root_bg_color)
-        main_frame.pack(fill=BOTH, expand=True, padx=20, pady=20)
+        # --- Header section
+        header_frame = Frame(self, width=header_width, height=header_height, bg=frame_bg_color)
+        header_frame.place(x=offset, y=offset, anchor='nw')
+        Label(header_frame, text="SM64 & SM66 Motor Tester", font=title_font, bg=frame_bg_color,
+                fg=text_color).place(x=int(header_width/2), y=3, anchor='n')
 
-        # --- HEADER ---
-        header_frame = Frame(main_frame, bg=root_bg_color)
-        header_frame.pack(fill=X, pady=(0, 20))
-        Label(header_frame, text="Motor Test Rig Control", font=("Arial", 24, "bold"),
-              bg=root_bg_color, fg=text_color).pack(side=LEFT)
+        # --- Model section
+        model_frame = Frame(self, width=model_width, height=model_height, bg=frame_bg_color)
+        model_frame.place(x=offset, y=main_y, anchor='nw')
 
-        # --- PROFILE SECTION ---
-        model_frame = LabelFrame(main_frame, text="Profile Management", bg=frame_bg_color, font=("Arial", 12, "bold"))
-        model_frame.pack(fill=X, pady=10, ipady=5)
+        Label(model_frame, text="--- Modelos ---", font=subtitle_font, bg=frame_bg_color).place(x=int(model_width/2), y=5, anchor='n')
 
-        pf_inner = Frame(model_frame, bg=frame_bg_color)
-        pf_inner.pack(fill=X, padx=10, pady=10)
+        Label(model_frame, text="Seleccion de modelo:", bg=frame_bg_color,
+                font=text_font).place(x=inner_offset, y=3 * inner_offset, anchor='nw')
 
-        Label(pf_inner, text="Select Profile:", bg=frame_bg_color).pack(side=LEFT, padx=5)
-
-        # Profile ComboBox
-        self.model_combo = ttk.Combobox(pf_inner, state="readonly", width=30)
-        self.model_combo.pack(side=LEFT, padx=5)
+        self.model_combo = ttk.Combobox(model_frame, state="readonly", width=25, font=subtitle_font, justify='center')
+        self.model_combo.place(x=inner_offset, y=5 * inner_offset, anchor='nw')
         self.model_combo.bind("<<ComboboxSelected>>", self.on_model_selected)
 
-        # Buttons
-        Button(pf_inner, text="Delete", command=self.delete_model, bg=fail_color, fg="white").pack(side=RIGHT, padx=5)
-        Button(pf_inner, text="New Profile", command=self.new_model, bg=process_color).pack(side=RIGHT, padx=5)
+        Button(model_frame, text="Nuevo modelo", command=self.new_model, font=text_font,
+                bg=pass_color).place(x= inner_offset, y=8 * inner_offset, anchor='nw')
+        Button(model_frame, text="Borrar modelo", command=self.delete_model, bg=fail_color, font=text_font,
+                fg=fail_text_color).place(x=model_width - inner_offset, y=8 * inner_offset, anchor='ne')
 
-        # Populate list
         self.refresh_models()
 
-        # --- STATUS DISPLAY ---
-        status_frame = LabelFrame(main_frame, text="Test Status", bg=frame_bg_color, font=("Arial", 12, "bold"))
-        status_frame.pack(fill=BOTH, expand=True, pady=10)
+        # --- Status section
+        status_frame = Frame(self, width=status_width, height=status_height, bg=frame_bg_color)
+        status_frame.place(x=screen_width - offset, y=main_y, anchor='ne')
 
-        self.status_label = Label(status_frame, text="READY", font=("Arial", 40, "bold"),
-                                    bg=disable_color, fg="#888888", height=3)
-        self.status_label.pack(fill=BOTH, expand=True, padx=20, pady=20)
+        Label(status_frame, text="--- Estado ---", font=subtitle_font,
+                bg=frame_bg_color).place(x=int(model_width / 2), y=5, anchor='n')
 
-        self.info_label = Label(status_frame, text="Waiting for model...", font=("Arial", 14), bg=frame_bg_color)
-        self.info_label.pack(pady=10)
+        self.state_frame = Frame(status_frame, width=state_width, height=state_height, bg=disable_color)
+        self.state_frame.place(x=state_offset, y=4 * inner_offset, anchor='nw')
+
+        self.status_label = Label(self.state_frame, text="CARGANDO", font=title_font,
+                                    bg=disable_color, fg=disable_text_color, height=3, justify='center')
+        self.status_label.place(x = int(state_width / 2), y = 3 * inner_offset, anchor='n')
+
+        self.info_label = Label(status_frame, text="Esperando modelo...", font=text_font, bg=frame_bg_color)
+        self.info_label.place(x=int(status_width / 2), y=main_height - inner_offset, anchor='s')
 
         # --- CONTROLS ---
-        control_frame = Frame(main_frame, bg=root_bg_color)
-        control_frame.pack(fill=X, pady=20)
+        control_frame = Frame(self, width=model_width, height=command_height,  bg=frame_bg_color)
+        control_frame.place(x=offset, y=screen_height - offset, anchor='sw')
 
-        self.btn_stop = Button(control_frame, text="EMERGENCY STOP / CANCEL",
-                                font=("Arial", 14, "bold"), bg=fail_color, fg="white",
-                                command=self.stop_test, height=2)
-        self.btn_stop.pack(fill=X)
+        Label(control_frame, text="--- Comandos ---", font=subtitle_font,
+                bg=frame_bg_color).place(x=int(model_width / 2), y=5, anchor='n')
+
+        self.btn_stop = Button(control_frame, text="CANCELAR",
+                                font=subtitle_font, bg=fail_color, fg=fail_text_color,
+                                command=self.stop_test, height=2, width=24, justify='center')
+        self.btn_stop.place(x=int(model_width / 2), y=3 * inner_offset, anchor='n')
 
     # --- LOGIC METHODS ---
     def start_worker(self):
@@ -224,20 +261,80 @@ class GUI(Tk):
 
     def update_gui_from_message(self, msg: str):
         """Parses messages and updates colors/text."""
-        self.info_label.config(text=msg)
+        if 'waiting:model' in msg:
+            self.state_frame['bg'] = disable_color
+            self.status_label['bg'] = disable_color
+            self.status_label['fg'] = disable_text_color
+            self.status_label['text'] = 'ESPERANDO'
+            self.info_label['text'] = f'Esperando modelo: "{msg.split("-")[1]}"'
+        elif 'model' in msg:
+            self.state_frame['bg'] = disable_color
+            self.status_label['bg'] = disable_color
+            self.status_label['fg'] = disable_text_color
+            self.status_label['text'] = 'CARGANDO'
+            self.info_label['text'] = f'Cargando modelo: "{msg.split(":")[1]}"'
+        elif msg == 'waiting:testinit':
+            self.state_frame['bg'] = disable_color
+            self.status_label['bg'] = disable_color
+            self.status_label['fg'] = ready_text_color
+            self.status_label['text'] = 'LISTO'
+            self.info_label['text'] = 'Esperando inicio de prueba'
+        elif msg == 'waiting:busyon':
+            self.state_frame['bg'] = process_color
+            self.status_label['bg'] = process_color
+            self.status_label['fg'] = ready_text_color
+            self.status_label['text'] = 'PROBANDO'
+            self.info_label['text'] = 'Prueba iniciada'
+        elif 'record' in msg:
+            self.state_frame['bg'] = process_color
+            self.status_label['bg'] = process_color
+            self.status_label['fg'] = ready_text_color
+            self.status_label['text'] = 'PROBANDO'
+            self.info_label['text'] = f'Esperando flanco #{msg[7]}'
+        elif msg == 'de-energizing':
+            self.state_frame['bg'] = process_color
+            self.status_label['bg'] = process_color
+            self.status_label['fg'] = ready_text_color
+            self.status_label['text'] = 'PROBANDO'
+            self.info_label['text'] = 'Desenergizando motor'
+        elif msg == 'analyzing':
+            self.state_frame['bg'] = process_color
+            self.status_label['bg'] = process_color
+            self.status_label['fg'] = ready_text_color
+            self.status_label['text'] = 'PROBANDO'
+            self.info_label['text'] = 'Analizando resultados'
+        elif msg == 'passed':
+            self.state_frame['bg'] = pass_color
+            self.status_label['bg'] = pass_color
+            self.status_label['fg'] = fail_text_color
+            self.status_label['text'] = 'PASO'
+            self.info_label['text'] = 'Motor paso'
+        elif msg == 'failed':
+            self.state_frame['bg'] = fail_color
+            self.status_label['bg'] = fail_color
+            self.status_label['fg'] = fail_text_color
+            self.status_label['text'] = 'FALLO'
+            self.info_label['text'] = 'Motor fallo'
+        elif 'cancelled' in msg:
+            self.state_frame['bg'] = fail_color
+            self.status_label['bg'] = fail_color
+            self.status_label['fg'] = fail_text_color
+            self.status_label['text'] = 'CANCELADO'
+            reason = msg.split(':')[1]
+            logger.warning(f'GUI: cancelled reason {reason}')
+            if reason == 'by_user':
+                self.info_label['text'] = 'Prueba cancelada por usuario'
+            elif reason == 'timeout':
+                self.info_label['text'] = 'Prueba cancelada, motor fallo'
+        elif 'error' in msg:
+            self.state_frame['bg'] = fail_color
+            self.status_label['bg'] = fail_color
+            self.status_label['fg'] = fail_text_color
+            self.status_label['text'] = 'ERROR'
+            self.info_label['text'] = f'{msg[6:]}'
+        else:
+            self.info_label.config(text=msg)
 
-        if "APROBADO" in msg:
-            self.status_label.config(text="PASS", bg=pass_color, fg="white")
-        elif "RECHAZADO" in msg or "Error" in msg:
-            self.status_label.config(text="FAIL", bg=fail_color, fg="white")
-        elif "Iniciando" in msg or "Prueba" in msg or "Configurando" in msg:
-            self.status_label.config(text="TESTING", bg=process_color, fg="black")
-        elif "CANCELADA" in msg:
-            self.status_label.config(text="CANCELED", bg=fail_color, fg="white")
-        elif "Listo" in msg:
-            self.status_label.config(text="READY", bg=disable_color, fg="#888888")
-        elif "Cargando" in msg:
-            self.status_label.config(text="LOADING", bg=disable_color, fg="black")
 
     def refresh_models(self):
         """Reloads model list from manager."""
@@ -255,7 +352,7 @@ class GUI(Tk):
         if model:
             logger.info(f"Loading model: {name}")
             self.model_queue.put(model)  # Send to worker
-            self.status_label.config(text="LOADING...", bg=disable_color)
+            self.gui_queue.put(f'waiting:model-{name}')
 
     def new_model(self):
         """Opens dialog to add model."""
@@ -264,7 +361,7 @@ class GUI(Tk):
     def delete_model(self):
         name = self.model_combo.get()
         if not name: return
-        if messagebox.askyesno("Confirm", f"Delete model '{name}'?"):
+        if messagebox.askyesno("Confirmar", f"Borrar modelo: '{name}'?"):
             self.model_manager.delete_model(name)
             self.refresh_models()
             self.model_combo.set('')
@@ -280,16 +377,18 @@ class GUI(Tk):
         self.gui_running = False
         self.model_queue.put(None)
 
-        self.status_label.config(text="SHUTTING DOWN...", bg=disable_color)
+        self.status_label.config(text="APAGANDO", bg=fail_color, fg=fail_text_color)
+        self.state_frame.config(bg=fail_color)
         self.update()  # Force redraw so user sees the message
 
         if self.input_thread.is_alive():
             self.input_thread.join(timeout=1)
 
-
-        if self.worker_thread.is_alive():
-            self.worker_thread.join()
-
+        try:
+            if self.worker_thread.is_alive():
+                self.worker_thread.join()
+        except Exception:
+            pass
         self.destroy()
 
 
