@@ -1,4 +1,5 @@
 import queue
+from functools import partial
 from tkinter import *
 from tkinter import ttk, messagebox
 import time
@@ -31,14 +32,20 @@ ready_text_color = '#000000'
 root_bg_color = '#A3D0FF'
 frame_bg_color = '#ffffff'
 text_color = '#333333'
+highlight_color = '#007acc'
 
-class ModelManagement(Toplevel):
+# Fonts constants
+title_font = ("Arial", 22, "bold")
+subtitle_font = ("Arial", 16)
+text_font = ("Arial", 12)
+
+class ModelCreator(Toplevel):
     def __init__(self, parent, manager, callback):
         # --- Top level initialization
         super().__init__(parent)
 
         # --- Setup
-        self.title(f'{equipment_name}_{sw_version}->ModelManagement')
+        self.title(f'{equipment_name}_{sw_version}->ModelCreator')
         self.geometry('300x400')
         self.manager = manager
         self.callback = callback
@@ -89,6 +96,95 @@ class ModelManagement(Toplevel):
             messagebox.showerror("Error", f"Invalid Input: {e}")
 
 
+class ModelSelector(Toplevel):
+    def __init__(self, parent, manager, on_select_callback):
+        super().__init__(parent)
+        self.title(f'{equipment_name}_{sw_version}->ModelSelector')
+        self.manager = manager
+        self.on_select_callback = on_select_callback
+        self['width'] = 800
+        self['height'] = 480
+        self['bg'] = root_bg_color
+        self.delete_mode = False
+
+        screen_width = 800
+        screen_height = 480
+        offset = 15
+        header_width = screen_width - 2 * offset
+        header_height = 40
+        commands_height = 60
+        models_y = offset + header_height + offset
+        models_height = screen_height - models_y - offset - commands_height - offset
+
+        # --- Header
+        header = Frame(self, bg=frame_bg_color, width=header_width, height=header_height)
+        header.place(x=offset, y=offset, anchor='nw')
+        self.lbl_title = Label(header, bg=frame_bg_color, text='Seleccionar modelo', font= title_font)
+        self.lbl_title.place(x=int(header_width/2),y=3,anchor='n')
+
+        # --- Commands
+        commands = Frame(self, bg=frame_bg_color, width=header_width, height=commands_height)
+        commands.place(x=offset, y=screen_height - offset, anchor='sw')
+
+        self.btn_toggle_delete = Button(commands, bg=fail_color, fg=fail_text_color, text="Modo Borrar",
+                                       command=self.toggle_delete_mode, width=15, height=2)
+        self.btn_toggle_delete.place(x=header_width - offset, y=offset, anchor='ne')
+
+
+        # --- Models
+        self.models_selector = Frame(self, bg=frame_bg_color, width=header_width, height=models_height)
+        self.models_selector.place(x=int(screen_width / 2), y=models_y, anchor='n')
+
+        self.refresh_models()
+
+    def toggle_delete_mode(self):
+        self.delete_mode = not self.delete_mode
+
+        if self.delete_mode:
+            pass
+            # self.btn_toggle_delete.config()
+            # TODO: CONTINUAR AL PRESIONAR EL BOTON DEBE ELIMINAR EL SIGUIENTE MODELO
+
+    def refresh_models(self):
+        for widget in self.models_selector.winfo_children():
+            widget.destroy()
+
+        names = self.manager.get_all_names()
+
+        if not names:
+            Label(self.models_selector, text='No hay modelos guardados', bg=fail_color).place(x=10, y=10, anchor='nw')
+            return
+
+        rows = 4
+
+        # Create a button for every model
+        for i, name in enumerate(names):
+            row_index = i % rows
+            col_index = i // rows
+            # partial(func, arg) allows us to pass the specific name to the function
+            btn = Button(self.models_selector, text=name, font=subtitle_font,
+                            bg=frame_bg_color, height=2, width=13,
+                            command=partial(self.on_model_clicked, name))
+            btn.grid(row=row_index, column=col_index, padx=5, pady=5, sticky='nsew')
+
+    def open_creator(self):
+        """Opens the creator window."""
+        pass
+
+    def on_model_clicked(self, name):
+        if self.delete_mode:
+            pass
+            # Manejo de eliminar modelo
+        else:
+            """Triggered when a model button is pressed."""
+            logger.info(f'ModelSelector: user picked "{name}"')
+            self.on_select_callback(name)
+            self.destroy()
+
+
+
+
+
 class GUI(Tk):
     def __init__(self):
         # --- Tkinter initialization
@@ -125,7 +221,7 @@ class GUI(Tk):
     def __draw__(self):
         # --- Variables
         screen_width = 800
-        screen_height = 400
+        screen_height = 480
 
         offset = 15
         header_width = screen_width - 2 * offset
@@ -143,14 +239,9 @@ class GUI(Tk):
         inner_offset = 15
         state_offset = 4 * inner_offset
         state_width = status_width - 2 * state_offset
-        state_height = 200
+        state_height = state_width
 
         command_height = status_height - offset - model_height
-
-
-        title_font = ("Arial", 22, "bold")
-        subtitle_font = ("Arial", 16)
-        text_font = ("Arial", 12)
 
         # --- Main windows settings
         self.title(f'{equipment_name}_{sw_version}->AutomaticTest')
@@ -170,19 +261,14 @@ class GUI(Tk):
 
         Label(model_frame, text="--- Modelos ---", font=subtitle_font, bg=frame_bg_color).place(x=int(model_width/2), y=5, anchor='n')
 
-        Label(model_frame, text="Seleccion de modelo:", bg=frame_bg_color,
-                font=text_font).place(x=inner_offset, y=3 * inner_offset, anchor='nw')
+        Label(model_frame, text="Modelo actual:", bg=frame_bg_color,
+                font=text_font).place(x=inner_offset, y=4 * inner_offset, anchor='nw')
 
-        self.model_combo = ttk.Combobox(model_frame, state="readonly", width=25, font=subtitle_font, justify='center')
-        self.model_combo.place(x=inner_offset, y=5 * inner_offset, anchor='nw')
-        self.model_combo.bind("<<ComboboxSelected>>", self.on_model_selected)
+        self.lbl_current_model = Label(model_frame, text="*Sin seleccionar*", bg=frame_bg_color, font=subtitle_font)
+        self.lbl_current_model.place(x=inner_offset, y=6 * inner_offset, anchor='nw')
 
-        Button(model_frame, text="Nuevo modelo", command=self.new_model, font=text_font,
-                bg=pass_color).place(x= inner_offset, y=8 * inner_offset, anchor='nw')
-        Button(model_frame, text="Borrar modelo", command=self.delete_model, bg=fail_color, font=text_font,
-                fg=fail_text_color).place(x=model_width - inner_offset, y=8 * inner_offset, anchor='ne')
-
-        self.refresh_models()
+        Button (model_frame, text='Seleccionar modelo', bg=highlight_color, fg=fail_text_color, font=subtitle_font,
+                width=18, height=2, command=self.open_model_manager).place(x=int(model_width/2), y=10 * inner_offset, anchor='n')
 
         # --- Status section
         status_frame = Frame(self, width=status_width, height=status_height, bg=frame_bg_color)
@@ -196,7 +282,7 @@ class GUI(Tk):
 
         self.status_label = Label(self.state_frame, text="CARGANDO", font=title_font,
                                     bg=disable_color, fg=disable_text_color, height=3, justify='center')
-        self.status_label.place(x = int(state_width / 2), y = 3 * inner_offset, anchor='n')
+        self.status_label.place(x = int(state_width / 2), y = 5 * inner_offset, anchor='n')
 
         self.info_label = Label(status_frame, text="Esperando modelo...", font=text_font, bg=frame_bg_color)
         self.info_label.place(x=int(status_width / 2), y=main_height - inner_offset, anchor='s')
@@ -214,19 +300,27 @@ class GUI(Tk):
         self.btn_stop.place(x=int(model_width / 2), y=3 * inner_offset, anchor='n')
 
     # --- LOGIC METHODS ---
+    def open_model_manager(self):
+        """Opens the TopLevel Model Selector"""
+        ModelSelector(self, self.model_manager, self.load_model_by_name)
+
+    def load_model_by_name(self, name):
+        """Callback used by the ModelManager to load a model"""
+        model = self.model_manager.get_model(name)
+        if model:
+            self.lbl_current_model['text'] = name
+            logger.info(f'GUI: loading model "{name}"')
+            self.model_queue.put(model)
+            self.gui_queue.put(f'waiting:model-{name}')
+
+
     def start_worker(self):
         """Starts the persistent worker thread."""
-        # Get default model or create a dummy one if empty
-        initial_names = self.model_manager.get_all_names()
-        if initial_names:
-            init_model = self.model_manager.get_model(initial_names[0])
-        else:
-            # Fallback if no models exist yet
-            init_model = MotorModel("Default", "DC", 0, 0, 0, [])
+        dummy_model = MotorModel("None", "DC", 0, 0, 0, [])
 
         self.worker_thread = threading.Thread(
             target=finite_state_machine,
-            args=(self.gui_queue, init_model, self.model_queue, self.stop_flag),
+            args=(self.gui_queue, dummy_model, self.model_queue, self.stop_flag),
             daemon=True
         )
         self.worker_thread.start()
@@ -334,29 +428,6 @@ class GUI(Tk):
             self.info_label['text'] = f'{msg[6:]}'
         else:
             self.info_label.config(text=msg)
-
-
-    def refresh_models(self):
-        """Reloads model list from manager."""
-        names = self.model_manager.get_all_names()
-        self.model_combo['values'] = names
-        if names:
-            self.model_combo.current(0)
-            # Don't auto load here to avoid accidental triggers on startup,
-            # but we could if we wanted.
-
-    def on_model_selected(self, event):
-        """Sends the selected model to the worker."""
-        name = self.model_combo.get()
-        model = self.model_manager.get_model(name)
-        if model:
-            logger.info(f"Loading model: {name}")
-            self.model_queue.put(model)  # Send to worker
-            self.gui_queue.put(f'waiting:model-{name}')
-
-    def new_model(self):
-        """Opens dialog to add model."""
-        ModelManagement(self, self.model_manager, self.refresh_models)
 
     def delete_model(self):
         name = self.model_combo.get()
