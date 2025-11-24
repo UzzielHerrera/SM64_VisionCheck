@@ -1,8 +1,22 @@
 # SM64 Change Log
 
-## V25.11.20
-## Added
+## V25.11.24
+### Changed
+* **GUI Stop Button Logic (`gui.py`):**
+    * Implemented **"Long Press"** functionality for application shutdown.
+    * **Single Click:** Immediately cancels the current motor test sequence via `stop_test()`.
+    * **Hold (>3s):** Triggers a full application shutdown (`on_close`).
+    * Added visual feedback on the button text while holding to indicate the countdown status.
+* **Model Selector GUI (`gui.py`):**
+    * **Implemented "Safe Delete Mode":** Replaced the direct delete action with a toggleable delete mode to prevent accidental data loss.
+    * **Visual Feedback:** Model buttons change appearance (light red background + cursor change) when Delete Mode is active to clearly indicate a destructive action.
+    * **Interactive Logic:** Clicking a model button now has context-aware behavior:
+        * *Normal Mode:* Loads the profile into the FSM.
+        * *Delete Mode:* Triggers a confirmation popup (`messagebox`) to permanently remove the profile.
+    * **Safety Auto-Reset:** The interface automatically reverts to Normal Mode after a successful deletion to prevent multiple accidental deletions.
 
+## V25.11.20
+### Added
 * **Created Main User Interface Module (`gui.py`).**
 * Implemented the primary Tkinter-based Graphical User Interface for the test.
 * **Key Features:**

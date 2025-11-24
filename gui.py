@@ -2,11 +2,14 @@ import queue
 from functools import partial
 from tkinter import *
 from tkinter import ttk, messagebox
+import os
 import time
 import threading
 import logging
 from models import MotorModel, ModelManager
 from test import finite_state_machine
+
+# TODO: ADD CANCEL BUTTON TO `MODEL_CREATOR` AND `MODEL_SELECTOR`
 
 # Equipments information
 equipment_name = 'TS111125'
@@ -24,6 +27,7 @@ if not logger.handlers:
 # Color constants
 pass_color = '#57da50'
 fail_color = '#ff3300'
+darker_fail_color = '#8B0000'
 fail_text_color = '#ffffff'
 process_color = '#ffcc00'
 disable_color = '#f3f3f3'
@@ -46,7 +50,19 @@ class ModelCreator(Toplevel):
 
         # --- Setup
         self.title(f'{equipment_name}_{sw_version}->ModelCreator')
-        self.geometry('300x400')
+
+        # --- Fullscreen inherit
+        if parent.attributes('-fullscreen'):
+            self.after(250, self.__force_fullscreen)
+        else:
+            self['width'] = 800
+            self['height'] = 480
+
+        # --- Grab focus
+        self.transient(parent)
+        self.grab_set()
+        self.focus_set()
+
         self.manager = manager
         self.callback = callback
 
@@ -95,6 +111,10 @@ class ModelCreator(Toplevel):
         except ValueError as e:
             messagebox.showerror("Error", f"Invalid Input: {e}")
 
+    def __force_fullscreen(self):
+        self.attributes('-fullscreen', True)
+        self.update_idletasks()
+
 
 class ModelSelector(Toplevel):
     def __init__(self, parent, manager, on_select_callback):
@@ -102,8 +122,19 @@ class ModelSelector(Toplevel):
         self.title(f'{equipment_name}_{sw_version}->ModelSelector')
         self.manager = manager
         self.on_select_callback = on_select_callback
-        self['width'] = 800
-        self['height'] = 480
+
+        # --- Fullscreen inherit
+        if parent.attributes('-fullscreen'):
+            self.after(250, self.__force_fullscreen)
+        else:
+            self['width'] = 800
+            self['height'] = 480
+
+        # --- Grab focus
+        self.transient(parent)
+        self.grab_set()
+        self.focus_set()
+
         self['bg'] = root_bg_color
         self.delete_mode = False
 
@@ -126,9 +157,13 @@ class ModelSelector(Toplevel):
         commands = Frame(self, bg=frame_bg_color, width=header_width, height=commands_height)
         commands.place(x=offset, y=screen_height - offset, anchor='sw')
 
-        self.btn_toggle_delete = Button(commands, bg=fail_color, fg=fail_text_color, text="Modo Borrar",
-                                       command=self.toggle_delete_mode, width=15, height=2)
-        self.btn_toggle_delete.place(x=header_width - offset, y=offset, anchor='ne')
+
+        self.btn_toggle_delete = Button(commands, bg=fail_color, fg=ready_text_color, text="MODO BORRAR",
+                                        command=self.toggle_delete_mode, width=20, height=2)
+        self.btn_toggle_delete.place(x=header_width - offset, y=5, anchor='ne')
+
+        Button(commands, bg=pass_color, fg=ready_text_color, text="NUEVO MODELO", width=20,
+               height=2, command=self.open_creator).place(x=offset, y=5, anchor='nw')
 
 
         # --- Models
@@ -137,13 +172,21 @@ class ModelSelector(Toplevel):
 
         self.refresh_models()
 
+    def __force_fullscreen(self):
+        self.attributes('-fullscreen', True)
+        self.update_idletasks()
+
     def toggle_delete_mode(self):
         self.delete_mode = not self.delete_mode
 
         if self.delete_mode:
-            pass
-            # self.btn_toggle_delete.config()
-            # TODO: CONTINUAR AL PRESIONAR EL BOTON DEBE ELIMINAR EL SIGUIENTE MODELO
+            self.btn_toggle_delete.config(text='CANCELAR BORRAR', bg=fail_color, fg=fail_text_color)
+            self.lbl_title.config(text='Borrar modelo')
+        else:
+            self.btn_toggle_delete.config(text='MODO BORRAR', bg=disable_color, fg=ready_text_color)
+            self.lbl_title.config(text='Seleccionar modelo')
+
+        self.refresh_models()
 
     def refresh_models(self):
         for widget in self.models_selector.winfo_children():
@@ -156,6 +199,10 @@ class ModelSelector(Toplevel):
             return
 
         rows = 4
+        if self.delete_mode:
+            btn_bg = fail_color
+        else:
+            btn_bg = frame_bg_color
 
         # Create a button for every model
         for i, name in enumerate(names):
@@ -163,26 +210,27 @@ class ModelSelector(Toplevel):
             col_index = i // rows
             # partial(func, arg) allows us to pass the specific name to the function
             btn = Button(self.models_selector, text=name, font=subtitle_font,
-                            bg=frame_bg_color, height=2, width=13,
+                            bg=btn_bg, height=2, width=13,
                             command=partial(self.on_model_clicked, name))
             btn.grid(row=row_index, column=col_index, padx=5, pady=5, sticky='nsew')
 
-    def open_creator(self):
-        """Opens the creator window."""
-        pass
-
     def on_model_clicked(self, name):
+        """Triggered when a model button is pressed."""
         if self.delete_mode:
-            pass
-            # Manejo de eliminar modelo
+            if messagebox.askyesno('Confirmar Borrado', f'¿Estás seguro de ELIMINAR permanentemente el modelo "{name}"'):
+                success = self.manager.delete_model(name)
+                if success:
+                    self.toggle_delete_mode()
+                else:
+                    messagebox.showerror('Error', f'No se pudo borrar el modelo "{name}"')
         else:
-            """Triggered when a model button is pressed."""
             logger.info(f'ModelSelector: user picked "{name}"')
             self.on_select_callback(name)
             self.destroy()
 
-
-
+    def open_creator(self):
+        """Opens the creator window."""
+        ModelCreator(self, self.manager, self.refresh_models)
 
 
 class GUI(Tk):
@@ -201,6 +249,7 @@ class GUI(Tk):
         self.gui_queue = queue.Queue()
         self.model_queue = queue.Queue()
         self.stop_flag = threading.Event()
+        self.shutdown_timer_id = None
         self.gui_running = True
 
         # --- GUI creation
@@ -216,6 +265,11 @@ class GUI(Tk):
 
         # --- Start polling loop
         self.check_queue()
+
+
+    def __force_fullscreen(self):
+        self.attributes('-fullscreen', True)
+        self.update_idletasks()
 
 
     def __draw__(self):
@@ -246,13 +300,22 @@ class GUI(Tk):
         # --- Main windows settings
         self.title(f'{equipment_name}_{sw_version}->AutomaticTest')
         self['bg'] = root_bg_color
-        self['width'] = screen_width
-        self['height'] = screen_height
+
+        if os.environ.get('SSH_CLIENT') or os.environ.get('SSH_TTY'):
+            logger.info(f'Running from ssh session')
+            self.attributes('-fullscreen', False)
+            self['width'] = screen_width
+            self['height'] = screen_height
+        else:
+            logger.info(f'Running from terminal')
+            self['width'] = screen_width
+            self['height'] = screen_height
+            self.after(250, self.__force_fullscreen)
 
         # --- Header section
         header_frame = Frame(self, width=header_width, height=header_height, bg=frame_bg_color)
         header_frame.place(x=offset, y=offset, anchor='nw')
-        Label(header_frame, text="SM64 & SM66 Motor Tester", font=title_font, bg=frame_bg_color,
+        Label(header_frame, text="SM64 & SM66", font=title_font, bg=frame_bg_color,
                 fg=text_color).place(x=int(header_width/2), y=3, anchor='n')
 
         # --- Model section
@@ -261,14 +324,15 @@ class GUI(Tk):
 
         Label(model_frame, text="--- Modelos ---", font=subtitle_font, bg=frame_bg_color).place(x=int(model_width/2), y=5, anchor='n')
 
-        Label(model_frame, text="Modelo actual:", bg=frame_bg_color,
-                font=text_font).place(x=inner_offset, y=4 * inner_offset, anchor='nw')
+        Label(model_frame, text="Modelo Actual:", bg=frame_bg_color, justify='center',
+                font=subtitle_font).place(x=int(model_width / 2), y=4 * inner_offset, anchor='n')
 
-        self.lbl_current_model = Label(model_frame, text="*Sin seleccionar*", bg=frame_bg_color, font=subtitle_font)
-        self.lbl_current_model.place(x=inner_offset, y=6 * inner_offset, anchor='nw')
+        self.lbl_current_model = Label(model_frame, text="* Sin Seleccionar *", bg=frame_bg_color, font=title_font,
+                                        justify='center')
+        self.lbl_current_model.place(x=int(model_width / 2), y=6 * inner_offset, anchor='n')
 
-        Button (model_frame, text='Seleccionar modelo', bg=highlight_color, fg=fail_text_color, font=subtitle_font,
-                width=18, height=2, command=self.open_model_manager).place(x=int(model_width/2), y=10 * inner_offset, anchor='n')
+        Button (model_frame, text='SELECCION DE MODELO', bg=highlight_color, fg=fail_text_color, font=subtitle_font,
+                width=24, height=2, command=self.open_model_manager).place(x=int(model_width/2), y=10 * inner_offset, anchor='n')
 
         # --- Status section
         status_frame = Frame(self, width=status_width, height=status_height, bg=frame_bg_color)
@@ -296,10 +360,12 @@ class GUI(Tk):
 
         self.btn_stop = Button(control_frame, text="CANCELAR",
                                 font=subtitle_font, bg=fail_color, fg=fail_text_color,
-                                command=self.stop_test, height=2, width=24, justify='center')
+                                height=2, width=24, justify='center')
         self.btn_stop.place(x=int(model_width / 2), y=3 * inner_offset, anchor='n')
+        self.btn_stop.bind('<ButtonPress-1>', self.on_stop_btn_press)
+        self.btn_stop.bind('<ButtonRelease-1>', self.on_stop_btn_release)
 
-    # --- LOGIC METHODS ---
+    # --- LOGIC METHODS
     def open_model_manager(self):
         """Opens the TopLevel Model Selector"""
         ModelSelector(self, self.model_manager, self.load_model_by_name)
@@ -312,7 +378,6 @@ class GUI(Tk):
             logger.info(f'GUI: loading model "{name}"')
             self.model_queue.put(model)
             self.gui_queue.put(f'waiting:model-{name}')
-
 
     def start_worker(self):
         """Starts the persistent worker thread."""
@@ -339,10 +404,8 @@ class GUI(Tk):
 
     def check_queue(self):
         """Polls the queue for messages from the worker."""
-
         if not self.gui_running:
             return
-
         try:
             while True:
                 msg = self.gui_queue.get_nowait()
@@ -356,64 +419,34 @@ class GUI(Tk):
     def update_gui_from_message(self, msg: str):
         """Parses messages and updates colors/text."""
         if 'waiting:model' in msg:
-            self.state_frame['bg'] = disable_color
-            self.status_label['bg'] = disable_color
-            self.status_label['fg'] = disable_text_color
-            self.status_label['text'] = 'ESPERANDO'
+            self.change_status('ESPERANDO', disable_color, disable_text_color)
             self.info_label['text'] = f'Esperando modelo: "{msg.split("-")[1]}"'
         elif 'model' in msg:
-            self.state_frame['bg'] = disable_color
-            self.status_label['bg'] = disable_color
-            self.status_label['fg'] = disable_text_color
-            self.status_label['text'] = 'CARGANDO'
+            self.change_status('CARGANDO', disable_color, disable_text_color)
             self.info_label['text'] = f'Cargando modelo: "{msg.split(":")[1]}"'
         elif msg == 'waiting:testinit':
-            self.state_frame['bg'] = disable_color
-            self.status_label['bg'] = disable_color
-            self.status_label['fg'] = ready_text_color
-            self.status_label['text'] = 'LISTO'
+            self.change_status('LISTO', disable_color, ready_text_color)
             self.info_label['text'] = 'Esperando inicio de prueba'
         elif msg == 'waiting:busyon':
-            self.state_frame['bg'] = process_color
-            self.status_label['bg'] = process_color
-            self.status_label['fg'] = ready_text_color
-            self.status_label['text'] = 'PROBANDO'
+            self.change_status('PROBANDO', process_color, ready_text_color)
             self.info_label['text'] = 'Prueba iniciada'
         elif 'record' in msg:
-            self.state_frame['bg'] = process_color
-            self.status_label['bg'] = process_color
-            self.status_label['fg'] = ready_text_color
-            self.status_label['text'] = 'PROBANDO'
+            self.change_status('PROBANDO', process_color, ready_text_color)
             self.info_label['text'] = f'Esperando flanco #{msg[7]}'
         elif msg == 'de-energizing':
-            self.state_frame['bg'] = process_color
-            self.status_label['bg'] = process_color
-            self.status_label['fg'] = ready_text_color
-            self.status_label['text'] = 'PROBANDO'
+            self.change_status('PROBANDO', process_color, ready_text_color)
             self.info_label['text'] = 'Desenergizando motor'
         elif msg == 'analyzing':
-            self.state_frame['bg'] = process_color
-            self.status_label['bg'] = process_color
-            self.status_label['fg'] = ready_text_color
-            self.status_label['text'] = 'PROBANDO'
+            self.change_status('PROBANDO', process_color, ready_text_color)
             self.info_label['text'] = 'Analizando resultados'
         elif msg == 'passed':
-            self.state_frame['bg'] = pass_color
-            self.status_label['bg'] = pass_color
-            self.status_label['fg'] = fail_text_color
-            self.status_label['text'] = 'PASO'
+            self.change_status('PASO', pass_color, fail_text_color)
             self.info_label['text'] = 'Motor paso'
         elif msg == 'failed':
-            self.state_frame['bg'] = fail_color
-            self.status_label['bg'] = fail_color
-            self.status_label['fg'] = fail_text_color
-            self.status_label['text'] = 'FALLO'
+            self.change_status('FALLO', fail_color, fail_text_color)
             self.info_label['text'] = 'Motor fallo'
         elif 'cancelled' in msg:
-            self.state_frame['bg'] = fail_color
-            self.status_label['bg'] = fail_color
-            self.status_label['fg'] = fail_text_color
-            self.status_label['text'] = 'CANCELADO'
+            self.change_status('CANCELADO', fail_color, fail_text_color)
             reason = msg.split(':')[1]
             logger.warning(f'GUI: cancelled reason {reason}')
             if reason == 'by_user':
@@ -421,21 +454,34 @@ class GUI(Tk):
             elif reason == 'timeout':
                 self.info_label['text'] = 'Prueba cancelada, motor fallo'
         elif 'error' in msg:
-            self.state_frame['bg'] = fail_color
-            self.status_label['bg'] = fail_color
-            self.status_label['fg'] = fail_text_color
-            self.status_label['text'] = 'ERROR'
+            self.change_status('ERROR', fail_color, fail_text_color)
             self.info_label['text'] = f'{msg[6:]}'
         else:
             self.info_label.config(text=msg)
 
-    def delete_model(self):
-        name = self.model_combo.get()
-        if not name: return
-        if messagebox.askyesno("Confirmar", f"Borrar modelo: '{name}'?"):
-            self.model_manager.delete_model(name)
-            self.refresh_models()
-            self.model_combo.set('')
+    def change_status(self, status_msg, bg_clr, fg_clr):
+        self.state_frame['bg'] = bg_clr
+        self.status_label['bg'] = bg_clr
+        self.status_label['fg'] = fg_clr
+        self.status_label['text'] = status_msg
+
+    def on_stop_btn_press(self, event):
+        self.stop_test()
+
+        self.btn_stop['bg'] = darker_fail_color
+        self.shutdown_timer_id = self.after(3000, self.perform_shutdown)
+
+    def on_stop_btn_release(self, event):
+        if self.shutdown_timer_id is not None:
+            self.after_cancel(self.shutdown_timer_id)
+            self.shutdown_timer_id = None
+
+        self.btn_stop['bg'] = fail_color
+
+    def perform_shutdown(self):
+        logger.warning(f'GUI: shutting down')
+        self.shutdown_timer_id = None
+        self.on_close()
 
     def stop_test(self):
         """Sends stop signal to worker."""
@@ -457,7 +503,7 @@ class GUI(Tk):
 
         try:
             if self.worker_thread.is_alive():
-                self.worker_thread.join()
+                self.worker_thread.join(timeout=10.0)
         except Exception:
             pass
         self.destroy()
