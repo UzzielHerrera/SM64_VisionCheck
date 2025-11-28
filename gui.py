@@ -9,7 +9,6 @@ import logging
 from models import MotorModel, ModelManager
 from test import finite_state_machine
 
-# TODO: ADD CANCEL BUTTON TO `MODEL_CREATOR` AND `MODEL_SELECTOR`
 
 # Equipments information
 equipment_name = 'TS111125'
@@ -89,7 +88,8 @@ class ModelCreator(Toplevel):
         self.entry_freq.insert(0, "0.0")
         self.entry_freq.pack()
 
-        Button(self, text="Save Profile", command=self.save, bg=pass_color).pack(pady=20)
+        Button(self, text='Guardar modelo', command=self.save, bg=pass_color).pack(pady=20)
+        Button(self, text='Cancelar', command=self.destroy, bg=fail_color).pack(pady=20)
 
     def save(self):
         try:
@@ -164,6 +164,9 @@ class ModelSelector(Toplevel):
 
         Button(commands, bg=pass_color, fg=ready_text_color, text="NUEVO MODELO", width=20,
                height=2, command=self.open_creator).place(x=offset, y=5, anchor='nw')
+
+        Button(commands, bg=fail_color, fg=ready_text_color, text="CANCELAR", width=20,
+               height=2, command=self.destroy, justify='center').place(x=int(header_width/2),y=5, anchor='n')
 
 
         # --- Models

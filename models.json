@@ -1,26 +1,114 @@
 {
-    "dc_dummy": {
-        "name": "dc_dummy",
-        "motor_type": "dc",
-        "voltage": 1.25,
-        "max_current": 0.05,
-        "frequency": 62.5,
-        "calibration_table": []
-    },
-    "ac_dummy": {
-        "name": "ac_dummy",
-        "motor_type": "ac",
-        "voltage": 24,
-        "max_current": 0.05,
-        "frequency": 60,
-        "calibration_table": []
-    },
     "023304032": {
         "name": "023304032",
         "motor_type": "DC",
         "voltage": 1.25,
         "max_current": 0.2,
         "frequency": 62.5,
+        "calibration_table": []
+    },
+    "023304362": {
+        "name": "023304362",
+        "motor_type": "DC",
+        "voltage": 1.25,
+        "max_current": 0.2,
+        "frequency": 62.5,
+        "calibration_table": []
+    },
+    "024800392": {
+        "name": "024800392",
+        "motor_type": "DC",
+        "voltage": 1.25,
+        "max_current": 0.2,
+        "frequency": 62.5,
+        "calibration_table": []
+    },
+    "156400332": {
+        "name": "156400332",
+        "motor_type": "AC",
+        "voltage": 24.0,
+        "max_current": 0.2,
+        "frequency": 60.0,
+        "calibration_table": []
+    },
+    "156400342": {
+        "name": "156400342",
+        "motor_type": "AC",
+        "voltage": 24.0,
+        "max_current": 0.2,
+        "frequency": 50.0,
+        "calibration_table": []
+    },
+    "156400352": {
+        "name": "156400352",
+        "motor_type": "AC",
+        "voltage": 24.0,
+        "max_current": 0.2,
+        "frequency": 60.0,
+        "calibration_table": []
+    },
+    "156400402": {
+        "name": "156400402",
+        "motor_type": "AC",
+        "voltage": 24.0,
+        "max_current": 0.2,
+        "frequency": 50.0,
+        "calibration_table": []
+    },
+    "156400412": {
+        "name": "156400412",
+        "motor_type": "AC",
+        "voltage": 24.0,
+        "max_current": 0.2,
+        "frequency": 60.0,
+        "calibration_table": []
+    },
+    "156400432": {
+        "name": "156400432",
+        "motor_type": "AC",
+        "voltage": 24.0,
+        "max_current": 0.2,
+        "frequency": 60.0,
+        "calibration_table": []
+    },
+    "156400442": {
+        "name": "156400442",
+        "motor_type": "AC",
+        "voltage": 24.0,
+        "max_current": 0.2,
+        "frequency": 60.0,
+        "calibration_table": []
+    },
+    "156400452": {
+        "name": "156400452",
+        "motor_type": "AC",
+        "voltage": 24.0,
+        "max_current": 0.2,
+        "frequency": 60.0,
+        "calibration_table": []
+    },
+    "156400462": {
+        "name": "156400462",
+        "motor_type": "AC",
+        "voltage": 24.0,
+        "max_current": 0.2,
+        "frequency": 50.0,
+        "calibration_table": []
+    },
+    "156400472": {
+        "name": "156400472",
+        "motor_type": "AC",
+        "voltage": 24.0,
+        "max_current": 0.2,
+        "frequency": 60.0,
+        "calibration_table": []
+    },
+    "156400542": {
+        "name": "156400542",
+        "motor_type": "AC",
+        "voltage": 24.0,
+        "max_current": 0.2,
+        "frequency": 60.0,
         "calibration_table": []
     }
 }
