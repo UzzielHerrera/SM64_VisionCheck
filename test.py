@@ -69,6 +69,51 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
     start_time = time.time()
     gui_update_time = time.time()
 
+    # --- Manual Mode variables
+    manual_source_active = False
+    manual_driver_active = False
+
+    def handle_manual_cmd(cmd, source_ctrl: PowerSource, motor_drv: MotorDriver):
+        nonlocal manual_source_active, manual_driver_active
+
+        if not source_ctrl or not motor_drv:
+            return 'error:no_model'
+
+        if cmd == 'manual:toggle_source':
+            if manual_source_active:
+                source_ctrl.disable_output()
+                manual_source_active = False
+                return 'source:Off'
+            else:
+                source_ctrl.request_control()
+                source_ctrl.set_voltage(current_model.voltage)
+                source_ctrl.set_max_current(current_model.max_current)
+                if isinstance(source_ctrl, ACSource):
+                    source_ctrl.set_frequency(current_model.frequency)
+                source_ctrl.enable_output()
+                manual_source_active = True
+                return 'source:On'
+        elif cmd == 'manual:toggle_driver':
+            if manual_driver_active:
+                motor_drv.remove_power()
+                manual_driver_active = False
+                return 'driver:Off'
+            else:
+                if not manual_source_active:
+                    return 'error:source_off'
+                motor_drv.apply_power()
+                manual_driver_active = True
+                return 'driver:On'
+        elif cmd == 'manual:toggle_busy':
+            state = GPIO.input(PINS.BUSY_SIGNAL)
+            GPIO.output(PINS.BUSY_SIGNAL, not state)
+            return f'busy:{state}'
+        elif cmd == 'manual:toggle_ok':
+            state = GPIO.input(PINS.OK_SIGNAL)
+            GPIO.output(PINS.OK_SIGNAL, not state)
+            return f'ok:{state}'
+
+        return 'error:unknown'
 
     # --- GPIO config
     current_mode = GPIO.getmode()
@@ -87,6 +132,20 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
     GPIO.setup(PINS.BUSY_SIGNAL, GPIO.OUT)
     GPIO.setup(PINS.OK_SIGNAL, GPIO.OUT)
 
+    # --- Pseudo test
+    # while True:
+    #     if GPIO.input(PINS.START_SIGNAL):
+    #         time.sleep(0.02)
+    #         if GPIO.input(PINS.START_SIGNAL):
+    #             GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
+    #             gui_queue.put('waiting:busyon')
+    #             time.sleep(0.20)
+    #             GPIO.output(PINS.BUSY_SIGNAL, GPIO.HIGH)
+    #             time.sleep(8.00)
+    #             gui_queue.put('passed')
+    #             GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
+    #             time.sleep(0.20)
+    #             GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
 
     # --- Thread level setup and cleanup
     try:
@@ -104,6 +163,35 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                         logger.info('FSM: stop flag active')
                         current_state = 'TEST_CANCEL'
 
+                    if current_state == 'MANUAL_MODE':
+                        start_value = GPIO.input(PINS.START_SIGNAL)
+                        sensor_value = GPIO.input(PINS.SENSOR)
+                        busy_value = GPIO.input(PINS.BUSY_SIGNAL)
+                        ok_value = GPIO.input(PINS.OK_SIGNAL)
+
+                        scr_value = 1 if manual_source_active else 0
+                        drv_value = 1 if manual_driver_active else 0
+                        gui_queue.put(f'manual_status:{start_value}, {sensor_value}, {busy_value}, {ok_value}, {scr_value}, {drv_value}')
+
+                        try:
+                            cmd = model_queue.get_nowait()
+                            if cmd == 'cmd:manual_exit':
+                                logger.info('FSM: exiting manual mode')
+                                if motor_driver: motor_driver.remove_power()
+                                if source_controller: source_controller.disable_output()
+                                GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
+                                GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
+                                manual_source_active = False
+                                manual_driver_active = False
+                                current_state = 'MODEL_CHECK'
+                            elif isinstance(cmd, str) and cmd.startswith('manual:'):
+                                response = handle_manual_cmd(cmd, source_controller, motor_driver)
+                                logger.info(f'FSM: manual action {response}')
+                        except Empty:
+                            pass
+
+                        time.sleep(PARAMS.MANUAL_YIELD_DELAY_SEC)
+
                     # --- Model check state
                     if current_state == 'MODEL_CHECK':
                         new_model = '0'
@@ -115,6 +203,14 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                         except Empty:
                             logger.info('FSM: model queue empty')
                             pass
+
+                        if isinstance(new_model, str) and new_model == 'cmd:manual_enter':
+                            logger.info('FSM: entering Manual Mode')
+
+                            manual_source_active = False
+                            manual_driver_active = False
+                            current_state = 'MANUAL_MODE'
+                            continue
 
                         # check if model has been changed
                         if new_model != '0' and new_model != current_model:

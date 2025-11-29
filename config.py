@@ -34,6 +34,7 @@ class PARAMS:
 
     # Wait times (in seconds)
     YIELD_DELAY_SEC = 0.05
+    MANUAL_YIELD_DELAY_SEC = 0.10
     POLL_DELAY_SEC = 0.002
     BUSY_DELAY_SEC = 0.2
     PSU_STABILIZE_SEC = 3.0

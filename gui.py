@@ -158,15 +158,15 @@ class ModelSelector(Toplevel):
         commands.place(x=offset, y=screen_height - offset, anchor='sw')
 
 
-        self.btn_toggle_delete = Button(commands, bg=fail_color, fg=ready_text_color, text="MODO BORRAR",
+        self.btn_toggle_delete = Button(commands, bg=fail_color, fg=fail_text_color, text="MODO BORRAR",
                                         command=self.toggle_delete_mode, width=20, height=2)
         self.btn_toggle_delete.place(x=header_width - offset, y=5, anchor='ne')
 
-        Button(commands, bg=pass_color, fg=ready_text_color, text="NUEVO MODELO", width=20,
-               height=2, command=self.open_creator).place(x=offset, y=5, anchor='nw')
+        Button(commands, bg=pass_color, fg=fail_text_color, text="NUEVO MODELO", width=20,
+                height=2, command=self.open_creator).place(x=offset, y=5, anchor='nw')
 
-        Button(commands, bg=fail_color, fg=ready_text_color, text="CANCELAR", width=20,
-               height=2, command=self.destroy, justify='center').place(x=int(header_width/2),y=5, anchor='n')
+        Button(commands, bg=fail_color, fg=fail_text_color, text="CANCELAR", width=20, font=subtitle_font,
+                height=2, command=self.destroy, justify='center').place(x=int(header_width/2),y=5, anchor='n')
 
 
         # --- Models
@@ -234,6 +234,113 @@ class ModelSelector(Toplevel):
     def open_creator(self):
         """Opens the creator window."""
         ModelCreator(self, self.manager, self.refresh_models)
+
+
+class ManualController(Toplevel):
+    def __init__(self, parent, send_command_callback, current_model_name, model_type):
+        super().__init__(parent)
+        self.title(f'{equipment_name}_{sw_version}->ManualControl:{current_model_name},{model_type}')
+        self.send_command = send_command_callback
+        self['bg'] = root_bg_color
+        self.protocol('WM_DELETE_WINDOW', self.close_manual_mode)
+
+        # --- Fullscreen inherit
+        if parent.attributes('-fullscreen'):
+            self.after(250, self.__force_fullscreen)
+        else:
+            self['width'] = 800
+            self['height'] = 480
+
+        # --- Grab focus
+        self.transient(parent)
+        self.grab_set()
+        self.focus_set()
+
+        # --- Start manual mode
+        self.send_command('cmd:manual_enter')
+
+        # --- GUI variables
+        screen_width = 800
+        screen_height = 480
+
+        offset = 15
+        header_width = screen_width - 2 * offset
+        header_height = 40
+
+        main_y = offset + header_height + offset
+        main_height = screen_height - main_y - offset
+
+        cmd_width = int((screen_width - 3 * offset) / 2)
+        cmd_height = main_height
+        cmd_center = int(cmd_width / 2)
+
+        status_width = int((screen_width - 3 * offset) / 2)
+        status_height = main_height
+
+        # --- Header section
+        header_frame = Frame(self, width=header_width, height=header_height, bg=frame_bg_color)
+        header_frame.place(x=offset, y=offset, anchor='nw')
+        Label(header_frame, text=f"MODO MANUAL -> {current_model_name},{model_type}", font=title_font, bg=frame_bg_color,
+                fg=text_color).place(x=int(header_width/2), y=3, anchor='n')
+
+        # --- CMD section
+        cmd_frame = Frame(self, width=cmd_width, height=cmd_height, bg=frame_bg_color)
+        cmd_frame.place(x=offset, y=main_y, anchor='nw')
+        Label(cmd_frame, text="--- Comandos ---", font=subtitle_font,
+                bg=frame_bg_color).place(x=int(status_width / 2), y=5, anchor='n')
+
+        self.btn_source = self.create_toggle_btn(cmd_frame, 'Fuente', 'manual:toggle_source', cmd_center, 3*offset)
+        self.btn_driver = self.create_toggle_btn(cmd_frame, 'Motor', 'manual:toggle_driver', cmd_center, 8*offset)
+        self.btn_busy = self.create_toggle_btn(cmd_frame, 'BUSY', 'manual:toggle_busy', cmd_center, 13*offset)
+        self.btn_ok = self.create_toggle_btn(cmd_frame, 'OK', 'manual:toggle_ok', cmd_center, 18*offset)
+
+        # --- Status section
+        status_frame = Frame(self, width=status_width, height=status_height, bg=frame_bg_color)
+        status_frame.place(x=screen_width - offset, y=main_y, anchor='ne')
+        Label(status_frame, text="--- Estado ---", font=subtitle_font,
+                bg=frame_bg_color).place(x=int(status_width / 2), y=5, anchor='n')
+
+        Button(status_frame, bg=fail_color, fg=fail_text_color, text="CANCELAR", width=20, height=2, command=self.close_manual_mode,
+                justify='center', font=subtitle_font).place(x=int(status_width / 2), y=status_height - offset, anchor='s')
+
+        self.led_start = self.create_led(status_frame, 'Start signal', offset, 4*offset)
+        self.led_sensor = self.create_led(status_frame, 'Sensor signal', offset, 8*offset)
+
+    def create_led(self, parent, text, x, y):
+        c = Canvas(parent, width=30, height=30, bg=frame_bg_color, highlightthickness=0)
+        c.place(x=x, y=y, anchor='w')
+        l = c.create_oval(2,2,28,28,fill=fail_color, outline='gray')
+        Label(parent, text=text, font=subtitle_font, bg=frame_bg_color,
+                justify='left').place(x=x+35, y=y, anchor='w')
+        return (c, l)
+
+    def create_toggle_btn(self, parent, text, cmd, x, y):
+        btn = Button(parent, text=text, font=subtitle_font, height=2, bg=disable_color, fg=text_color, width=20,
+                        activebackground=disable_color, activeforeground=text_color,
+                        command= lambda: self.send_command(cmd))
+        btn.place(x=x, y=y, anchor='n')
+        return btn
+
+    def update_manual(self, start, sensor, busy, ok, src_on, drv_on):
+        self.led_start[0].itemconfig(self.led_start[1], fill=pass_color if int(start) else fail_color)
+        self.led_sensor[0].itemconfig(self.led_sensor[1], fill=pass_color if int(sensor) else fail_color)
+
+        self.btn_busy['bg'] = pass_color if int(busy) else disable_color
+        self.btn_busy['activebackground'] = pass_color if int(busy) else disable_color
+        self.btn_ok['bg'] = pass_color if int(ok) else disable_color
+        self.btn_ok['activebackground'] = pass_color if int(ok) else disable_color
+        self.btn_source['bg'] = pass_color if int(src_on) else disable_color
+        self.btn_source['activebackground'] = pass_color if int(src_on) else disable_color
+        self.btn_driver['bg'] = pass_color if int(drv_on) else disable_color
+        self.btn_driver['activebackground'] = pass_color if int(drv_on) else disable_color
+
+    def __force_fullscreen(self):
+        self.attributes('-fullscreen', True)
+        self.update_idletasks()
+
+    def close_manual_mode(self):
+        self.send_command('cmd:manual_exit')
+        self.destroy()
 
 
 class GUI(Tk):
@@ -337,6 +444,7 @@ class GUI(Tk):
         Button (model_frame, text='SELECCION DE MODELO', bg=highlight_color, fg=fail_text_color, font=subtitle_font,
                 width=24, height=2, command=self.open_model_manager).place(x=int(model_width/2), y=10 * inner_offset, anchor='n')
 
+
         # --- Status section
         status_frame = Frame(self, width=status_width, height=status_height, bg=frame_bg_color)
         status_frame.place(x=screen_width - offset, y=main_y, anchor='ne')
@@ -363,12 +471,28 @@ class GUI(Tk):
 
         self.btn_stop = Button(control_frame, text="CANCELAR",
                                 font=subtitle_font, bg=fail_color, fg=fail_text_color,
-                                height=2, width=24, justify='center')
-        self.btn_stop.place(x=int(model_width / 2), y=3 * inner_offset, anchor='n')
+                                height=2, width=11, justify='center')
+        self.btn_stop.place(x=inner_offset, y=3 * inner_offset, anchor='nw')
         self.btn_stop.bind('<ButtonPress-1>', self.on_stop_btn_press)
         self.btn_stop.bind('<ButtonRelease-1>', self.on_stop_btn_release)
 
+        Button(control_frame, text='MANUAL', bg=highlight_color, fg=fail_text_color,
+                font=subtitle_font, width=11, height=2,
+                command=self.open_manual_mode).place(x=model_width-inner_offset, y=3 * inner_offset, anchor='ne')
+
     # --- LOGIC METHODS
+    def open_manual_mode(self):
+        """Opens the TopLevel Manual Controller"""
+        current_model_name = self.lbl_current_model['text']
+        if current_model_name == '* Sin Seleccionar *':
+            logger.warning('GUI: no model selected')
+            return
+        model_obj = self.model_manager.get_model(current_model_name)
+        def send_to_worker(cmd):
+            self.model_queue.put(cmd)
+
+        self.manual_window = ManualController(self, send_to_worker, self.lbl_current_model['text'], model_obj.motor_type)
+
     def open_model_manager(self):
         """Opens the TopLevel Model Selector"""
         ModelSelector(self, self.model_manager, self.load_model_by_name)
@@ -421,7 +545,15 @@ class GUI(Tk):
 
     def update_gui_from_message(self, msg: str):
         """Parses messages and updates colors/text."""
-        if 'waiting:model' in msg:
+        if msg.startswith('manual_status'):
+            try:
+                data = msg.split(':')[1]
+                start, sensor, busy, ok, src, drv = data.split(',')
+                if hasattr(self, 'manual_window') and self.manual_window.winfo_exists():
+                    self.manual_window.update_manual(start, sensor, busy, ok, src, drv)
+            except Exception as e:
+                pass
+        elif 'waiting:model' in msg:
             self.change_status('ESPERANDO', disable_color, disable_text_color)
             self.info_label['text'] = f'Esperando modelo: "{msg.split("-")[1]}"'
         elif 'model' in msg:

@@ -1,5 +1,12 @@
 # SM64 Change Log
 
+## V25.11.29
+### Added
+* **Manual Control Mode:**
+    * Implemented a comprehensive manual control interface (`ManualController`) and corresponding FSM logic (`MANUAL_MODE`).
+    * **HAL Integration:** The manual control logic was implemented using the **Hardware Abstraction Layer (HAL)** classes (`MotorDriver`, `PowerSource`) rather than direct GPIO manipulation.
+    * **Context Awareness:** Manual activation of the power supply automatically retrieves and applies the voltage and current limits from the currently active `MotorModel`.
+
 ## V25.11.24
 ### Changed
 * **GUI Stop Button Logic (`gui.py`):**
