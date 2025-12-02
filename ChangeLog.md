@@ -1,5 +1,9 @@
 # SM64 Change Log
 
+## V25.12.01
+### Added
+* **Session Persistence:** Implemented functionality to automatically save the currently selected motor profile and restore it upon application restart.
+
 ## V25.11.29
 ### Added
 * **Manual Control Mode:**

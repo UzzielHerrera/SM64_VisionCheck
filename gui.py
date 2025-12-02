@@ -165,7 +165,7 @@ class ModelSelector(Toplevel):
         Button(commands, bg=pass_color, fg=fail_text_color, text="NUEVO MODELO", width=20,
                 height=2, command=self.open_creator).place(x=offset, y=5, anchor='nw')
 
-        Button(commands, bg=fail_color, fg=fail_text_color, text="CANCELAR", width=20, font=subtitle_font,
+        Button(commands, bg=fail_color, fg=fail_text_color, text="CANCELAR", width=20,
                 height=2, command=self.destroy, justify='center').place(x=int(header_width/2),y=5, anchor='n')
 
 
@@ -503,16 +503,29 @@ class GUI(Tk):
         if model:
             self.lbl_current_model['text'] = name
             logger.info(f'GUI: loading model "{name}"')
+            self.model_manager.save_last_used(name)
             self.model_queue.put(model)
             self.gui_queue.put(f'waiting:model-{name}')
 
     def start_worker(self):
         """Starts the persistent worker thread."""
-        dummy_model = MotorModel("None", "DC", 0, 0, 0, [])
+        last_model_name = self.model_manager.get_last_used()
+        init_model = None
+
+        if last_model_name:
+            init_model = self.model_manager.get_model(last_model_name)
+
+        if not init_model:
+            logger.info('GUI: no model selected, loading default model')
+            init_model = MotorModel("None", "DC", 0, 0, 0, [])
+        else:
+            logger.info(f'GUI: model selected, loading "{init_model.name}"')
+            if hasattr(self, 'lbl_current_model'):
+                self.lbl_current_model['text'] = init_model.name
 
         self.worker_thread = threading.Thread(
             target=finite_state_machine,
-            args=(self.gui_queue, dummy_model, self.model_queue, self.stop_flag),
+            args=(self.gui_queue, init_model, self.model_queue, self.stop_flag),
             daemon=True
         )
         self.worker_thread.start()

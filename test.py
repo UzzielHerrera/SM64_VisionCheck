@@ -39,6 +39,7 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 def motor_analyze(edge_record, calibration_table):
+    logger.warning(f'FSM: Motor Analyzing {edge_record}:{calibration_table}')
     return True
 
 def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queue: Queue, stop_flag: Event):
@@ -51,10 +52,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
     :param model_queue:
     :return:
     """
-    if not isinstance(stop_flag, Event):
-        logger.error('Stop flag must be an Event.')
-        return
-
     logger.info('FSM: starting finite state machine')
     # --- FSM state variables
     current_model = initial_model
@@ -132,20 +129,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
     GPIO.setup(PINS.BUSY_SIGNAL, GPIO.OUT)
     GPIO.setup(PINS.OK_SIGNAL, GPIO.OUT)
 
-    # --- Pseudo test
-    # while True:
-    #     if GPIO.input(PINS.START_SIGNAL):
-    #         time.sleep(0.02)
-    #         if GPIO.input(PINS.START_SIGNAL):
-    #             GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
-    #             gui_queue.put('waiting:busyon')
-    #             time.sleep(0.20)
-    #             GPIO.output(PINS.BUSY_SIGNAL, GPIO.HIGH)
-    #             time.sleep(8.00)
-    #             gui_queue.put('passed')
-    #             GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
-    #             time.sleep(0.20)
-    #             GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
 
     # --- Thread level setup and cleanup
     try:

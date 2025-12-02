@@ -1,7 +1,6 @@
 import json
 import os
 import logging
-import logging.handlers
 
 # --- Log handler setup
 logger = logging.getLogger('SpinCheck')
@@ -28,15 +27,16 @@ class MotorModel:
                 f"Table_Steps={len(self.calibration_table)}>")
 
 class ModelManager:
-    def __init__(self, filename='models.json'):
-        self.filename = filename
+    def __init__(self, models_filename='models.json', settings_filename='settings.json'):
+        self.models_filename = models_filename
+        self.settings_filename = settings_filename
         self.models = self.load_all()
 
     def load_all(self):
-        if not os.path.exists(self.filename):
+        if not os.path.exists(self.models_filename):
             return {}
         try:
-            with open(self.filename) as f:
+            with open(self.models_filename) as f:
                 data = json.load(f)
                 models_dict = {}
                 for name, p_data in data.items():
@@ -48,7 +48,7 @@ class ModelManager:
 
     def save_all(self):
         data_to_save = {name: model.__dict__ for name, model in self.models.items()}
-        with open(self.filename, 'w') as f:
+        with open(self.models_filename, 'w') as f:
             json.dump(data_to_save, f, indent=4)
 
     def get_model(self, name):
@@ -64,12 +64,30 @@ class ModelManager:
     def delete_model(self, name):
         if name in self.models:
             del self.models[name]
-            logger.info(f'Model {name} deleted successfully')
+            logger.info(f'ModelManager: {name} deleted successfully')
             self.save_all()
             return True
         else:
-            logger.warning(f'Model {name} not found in models')
+            logger.warning(f'ModelManager: {name} not found in models')
             return False
+
+    def save_last_used(self, name):
+        try:
+            with open(self.settings_filename, 'w') as f:
+                json.dump({'last_model': name}, f)
+        except Exception as e:
+            logger.error(f'ModelManager: {e}')
+
+    def get_last_used(self):
+        if not os.path.exists(self.settings_filename):
+            return None
+        try:
+            with open(self.settings_filename, 'r') as f:
+                data = json.load(f)
+                return data.get('last_model')
+        except Exception as e:
+            logger.error(f'ModelManager: {e}')
+            return None
 
 if __name__ == '__main__':
     m = ModelManager('models.json')
