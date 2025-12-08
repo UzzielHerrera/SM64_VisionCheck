@@ -31,13 +31,14 @@ class PARAMS:
     TEST_TIMEOUT_SEC = 20.0
     GUI_UPDATE_TIMEOUT_SEC = 0.25
     DEBOUNCE_MS = 20
+    PSU_STABILIZE_SEC = 1.5
+    PSU_RAMP_STEPS = 10
 
     # Wait times (in seconds)
     YIELD_DELAY_SEC = 0.05
     MANUAL_YIELD_DELAY_SEC = 0.05
     POLL_DELAY_SEC = 0.002
     BUSY_DELAY_SEC = 0.2
-    PSU_STABILIZE_SEC = 3.0
     PASS_WAIT_SEC = 0.2
 
     # Analysis

@@ -40,7 +40,10 @@ if not logger.handlers:
 
 def motor_analyze(edge_record, calibration_table):
     logger.warning(f'FSM: Motor Analyzing {edge_record}:{calibration_table}')
-    return True
+    if len(edge_record) >= 7:
+        return True
+    else:
+        return False
 
 def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queue: Queue, stop_flag: Event):
     """
@@ -113,11 +116,11 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
         return 'error:unknown'
 
     # --- GPIO config
-    current_mode = GPIO.getmode()
+    current_rpi_mode = GPIO.getmode()
 
-    if current_mode is None:
+    if current_rpi_mode is None:
         GPIO.setmode(GPIO.BCM)
-    elif current_mode != GPIO.BCM:
+    elif current_rpi_mode != GPIO.BCM:
         logger.warning(f"FSM: GPIO forcing cleanup and setmode")
         GPIO.cleanup()
         GPIO.setmode(GPIO.BCM)
@@ -250,8 +253,9 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                         # set up source voltage, frequency, current
                         source_controller.set_voltage(current_model.voltage)
                         source_controller.set_max_current(current_model.max_current)
+
                         if isinstance(source_controller, ACSource):
-                            source_controller.set_frequency(current_model.frequency)
+                            source_controller.set_frequency(current_model.start_freq)
 
                         # turn source output on
                         if not source_is_active:
@@ -269,9 +273,13 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                         while not stop_flag.is_set():
 
                             # look up for start signal
-                            # if GPIO.input(PINS.START_SIGNAL) == GPIO.HIGH:
-                            #     GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
-                            #     current_state = 'TEST_INIT'
+                            if GPIO.input(PINS.START_SIGNAL) == GPIO.HIGH:
+                                if stop_flag.wait(PARAMS.YIELD_DELAY_SEC): continue
+                                if GPIO.input(PINS.START_SIGNAL) == GPIO.HIGH:
+                                    logger.info(f'FSM: starting test')
+                                    GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
+                                    current_state = 'TEST_INIT'
+                                    break
 
                             # look up for model change
                             try:
@@ -297,6 +305,11 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                         # turn on relay / h-bridge
                         motor_driver.apply_power()
 
+                        # Power source ramp setup
+                        if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
+                            current_state = 'TEST_RAMP_SETUP'
+                            continue
+
                         # Polling prepare
                         edge_record = []
                         last_pin_state = GPIO.input(PINS.SENSOR)
@@ -304,6 +317,28 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                         start_time = time.time()
                         gui_update_time = time.time()
 
+                        current_state = 'TEST_ACTIVE'
+
+                    # --- Test Power Source Ramp
+                    elif current_state == 'TEST_RAMP_SETUP':
+                        gui_queue.put('waiting:ramp')
+
+                        source_controller.set_frequency(current_model.start_freq)
+                        last_step_time = time.time()
+                        step_count = 0
+                        step_lapse_time = current_model.delta_t / PARAMS.PSU_RAMP_STEPS
+
+                        while not stop_flag.is_set():
+                            if time.time() - last_step_time > step_lapse_time:
+                                last_step_time = time.time()
+                                step_count += 1
+                                if step_count % PARAMS.PSU_RAMP_STEPS == 0:
+                                    break
+                                progress = step_count /  PARAMS.PSU_RAMP_STEPS
+                                current_drive_frequency = current_model.start_freq + (progress * (current_model.end_freq - current_model.start_freq))
+                                source_controller.set_frequency(current_drive_frequency)
+
+                        source_controller.set_voltage(current_model.end_freq)
                         current_state = 'TEST_ACTIVE'
 
                     # --- Test active state
@@ -329,7 +364,8 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
 
                         # check timeout
                         if (time.time() - start_time) > PARAMS.TEST_TIMEOUT_SEC:
-                            current_state = 'TEST_TIMEOUT'
+                            logger.info('FSM: Test timed out')
+                            current_state = 'TEST_STOP'
 
                         # update gui
                         if (time.time() - gui_update_time) > PARAMS.GUI_UPDATE_TIMEOUT_SEC:
@@ -343,6 +379,8 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                     elif current_state == 'TEST_STOP':
                         gui_queue.put('de-energizing')
                         motor_driver.remove_power()
+                        if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
+                            source_controller.set_frequency(current_model.start_freq)
                         current_state = 'TEST_ANALYZE'
 
                     # --- Test analyze state

@@ -4,7 +4,9 @@
         "motor_type": "DC",
         "voltage": 1.25,
         "max_current": 0.2,
-        "frequency": 62.5,
+        "start_freq": 62.5,
+        "end_freq": 62.5,
+        "delta_t": 1.0,
         "calibration_table": []
     },
     "023304362": {
@@ -12,7 +14,9 @@
         "motor_type": "DC",
         "voltage": 1.25,
         "max_current": 0.2,
-        "frequency": 62.5,
+        "start_freq": 62.5,
+        "end_freq": 62.5,
+        "delta_t": 1.0,
         "calibration_table": []
     },
     "024800392": {
@@ -20,7 +24,9 @@
         "motor_type": "DC",
         "voltage": 1.25,
         "max_current": 0.2,
-        "frequency": 62.5,
+        "start_freq": 62.5,
+        "end_freq": 62.5,
+        "delta_t": 1.0,
         "calibration_table": []
     },
     "156400332": {
@@ -28,7 +34,9 @@
         "motor_type": "AC",
         "voltage": 24.0,
         "max_current": 0.2,
-        "frequency": 60.0,
+        "start_freq": 60.0,
+        "end_freq": 120.0,
+        "delta_t": 1.0,
         "calibration_table": []
     },
     "156400342": {
@@ -36,7 +44,9 @@
         "motor_type": "AC",
         "voltage": 24.0,
         "max_current": 0.2,
-        "frequency": 50.0,
+        "start_freq": 50.0,
+        "end_freq": 120.0,
+        "delta_t": 1.0,
         "calibration_table": []
     },
     "156400352": {
@@ -44,7 +54,9 @@
         "motor_type": "AC",
         "voltage": 24.0,
         "max_current": 0.2,
-        "frequency": 60.0,
+        "start_freq": 60.0,
+        "end_freq": 120.0,
+        "delta_t": 1.0,
         "calibration_table": []
     },
     "156400402": {
@@ -52,7 +64,9 @@
         "motor_type": "AC",
         "voltage": 24.0,
         "max_current": 0.2,
-        "frequency": 50.0,
+        "start_freq": 50.0,
+        "end_freq": 120.0,
+        "delta_t": 1.0,
         "calibration_table": []
     },
     "156400412": {
@@ -60,7 +74,9 @@
         "motor_type": "AC",
         "voltage": 24.0,
         "max_current": 0.2,
-        "frequency": 60.0,
+        "start_freq": 60.0,
+        "end_freq": 120.0,
+        "delta_t": 1.0,
         "calibration_table": []
     },
     "156400432": {
@@ -68,7 +84,9 @@
         "motor_type": "AC",
         "voltage": 24.0,
         "max_current": 0.2,
-        "frequency": 60.0,
+        "start_freq": 60.0,
+        "end_freq": 120.0,
+        "delta_t": 1.0,
         "calibration_table": []
     },
     "156400442": {
@@ -76,7 +94,9 @@
         "motor_type": "AC",
         "voltage": 24.0,
         "max_current": 0.2,
-        "frequency": 60.0,
+        "start_freq": 60.0,
+        "end_freq": 120.0,
+        "delta_t": 1.0,
         "calibration_table": []
     },
     "156400452": {
@@ -84,7 +104,9 @@
         "motor_type": "AC",
         "voltage": 24.0,
         "max_current": 0.2,
-        "frequency": 60.0,
+        "start_freq": 60.0,
+        "end_freq": 120.0,
+        "delta_t": 1.0,
         "calibration_table": []
     },
     "156400462": {
@@ -92,7 +114,9 @@
         "motor_type": "AC",
         "voltage": 24.0,
         "max_current": 0.2,
-        "frequency": 50.0,
+        "start_freq": 50.0,
+        "end_freq": 120.0,
+        "delta_t": 1.0,
         "calibration_table": []
     },
     "156400472": {
@@ -100,7 +124,9 @@
         "motor_type": "AC",
         "voltage": 24.0,
         "max_current": 0.2,
-        "frequency": 60.0,
+        "start_freq": 60.0,
+        "end_freq": 120.0,
+        "delta_t": 1.0,
         "calibration_table": []
     },
     "156400542": {
@@ -108,7 +134,9 @@
         "motor_type": "AC",
         "voltage": 24.0,
         "max_current": 0.2,
-        "frequency": 60.0,
+        "start_freq": 60.0,
+        "end_freq": 120.0,
+        "delta_t": 1.0,
         "calibration_table": []
     }
 }

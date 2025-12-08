@@ -12,19 +12,21 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 class MotorModel:
-    def __init__(self, name, motor_type, voltage, max_current=0.0, frequency=0.0, calibration_table = []):
+    def __init__(self, name, motor_type, voltage, max_current=0.0, start_freq=0.0, end_freq=0.0, delta_t = 0.0, calibration_table = []):
         self.name = name
         self.motor_type = motor_type
         self.voltage = voltage
         self.max_current = max_current
-        self.frequency = frequency
+        self.start_freq = start_freq
+        self.end_freq = end_freq
+        self.delta_t = delta_t
         self.calibration_table = calibration_table if calibration_table is not None else []
 
     def __repr__(self):
         # Updated string representation
         return (f"<MotorModel name='{self.name}' type='{self.motor_type}' "
-                f"V={self.voltage} A={self.max_current} Hz={self.frequency} "
-                f"Table_Steps={len(self.calibration_table)}>")
+                f"V={self.voltage} A={self.max_current} Start_Hz={self.start_freq} End_Hz={self.end_freq} dT={self.delta_t}"
+                f"Calibration_Table={len(self.calibration_table)}>")
 
 class ModelManager:
     def __init__(self, models_filename='models.json', settings_filename='settings.json'):
@@ -47,7 +49,7 @@ class ModelManager:
             return {}
 
     def save_all(self):
-        data_to_save = {name: model.__dict__ for name, model in self.models.items()}
+        data_to_save = {name: motor_model.__dict__ for name, motor_model in self.models.items()}
         with open(self.models_filename, 'w') as f:
             json.dump(data_to_save, f, indent=4)
 
@@ -94,7 +96,7 @@ if __name__ == '__main__':
 
     # 1. Add a dummy model to demonstrate deletion
     if 'model_to_delete' not in m.get_all_names():
-        new_model = MotorModel('model_to_delete', 'ac', 10.0, 1.5, 60.0, [])
+        new_model = MotorModel('model_to_delete', 'ac', 10.0, 1.5, 60.0, 120.0, 1.0, [])
         m.add_model(new_model)
         print(f"Added 'model_to_delete'. Current models: {m.get_all_names()}")
 

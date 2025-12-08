@@ -83,10 +83,21 @@ class ModelCreator(Toplevel):
         self.entry_curr = Entry(self)
         self.entry_curr.pack()
 
-        Label(self, text="Frequency (Hz) [AC Only]:").pack(pady=5)
-        self.entry_freq = Entry(self)
-        self.entry_freq.insert(0, "0.0")
-        self.entry_freq.pack()
+        Label(self, text="Start Frequency (Hz):").pack(pady=5)
+        self.entry_sfreq = Entry(self)
+        self.entry_sfreq.insert(0, "0.0")
+        self.entry_sfreq.pack()
+
+        Label(self, text="End Frequency (Hz):").pack(pady=5)
+        self.entry_efreq = Entry(self)
+        self.entry_efreq.insert(0, "0.0")
+        self.entry_efreq.pack()
+
+        Label(self, text="Ramp Time (s):").pack(pady=5)
+        self.entry_delta_t = Entry(self)
+        self.entry_delta_t.insert(0, "0.0")
+        self.entry_delta_t.pack()
+
 
         Button(self, text='Guardar modelo', command=self.save, bg=pass_color).pack(pady=20)
         Button(self, text='Cancelar', command=self.destroy, bg=fail_color).pack(pady=20)
@@ -97,12 +108,14 @@ class ModelCreator(Toplevel):
             m_type = self.combo_type.get()
             volt = float(self.entry_volt.get())
             curr = float(self.entry_curr.get())
-            freq = float(self.entry_freq.get())
+            sfreq = float(self.entry_sfreq.get())
+            efreq = float(self.entry_efreq.get())
+            delta_t = float(self.entry_delta_t.get())
 
             if not name: raise ValueError("Name is required")
 
-            # Create new model (Master table starts empty, requires calibration)
-            new_model = MotorModel(name, m_type, volt, curr, freq, calibration_table=[])
+            # Create new model (calibration table starts empty, requires calibration)
+            new_model = MotorModel(name, m_type, volt, curr, sfreq, efreq, delta_t, calibration_table=[])
             self.manager.add_model(new_model)
 
             messagebox.showinfo("Success", f"Profile '{name}' saved!")
@@ -362,6 +375,10 @@ class GUI(Tk):
         self.shutdown_timer_id = None
         self.gui_running = True
 
+        # --- GUI variables
+        self.result_hold = False
+        self.hold_timer = None
+
         # --- GUI creation
         logger.info('Drawing GUI')
         self.__draw__()
@@ -549,6 +566,7 @@ class GUI(Tk):
         try:
             while True:
                 msg = self.gui_queue.get_nowait()
+                logger.info(f'GUI: received message "{msg}"')
                 self.update_gui_from_message(msg)
         except queue.Empty:
             pass
@@ -566,18 +584,43 @@ class GUI(Tk):
                     self.manual_window.update_manual(start, sensor, busy, ok, src, drv)
             except Exception as e:
                 pass
-        elif 'waiting:model' in msg:
+
+        if msg=='passed' or msg=='failed':
+            self.result_hold = True
+            if self.hold_timer: self.after_cancel(self.hold_timer)
+            self.hold_timer = self.after(2000, self.clear_result_hold)
+            if msg == 'passed':
+                self.change_status('PASO', pass_color, fail_text_color)
+                self.info_label['text'] = 'Motor paso'
+            elif msg == 'failed':
+                self.change_status('FALLO', fail_color, fail_text_color)
+                self.info_label['text'] = 'Motor fallo'
+            return
+
+        elif msg == 'waiting:testinit':
+            if not self.result_hold:
+                self.change_status('LISTO', disable_color, ready_text_color)
+                self.info_label['text'] = 'Esperando inicio de prueba'
+            return
+
+        if self.result_hold:
+            self.result_hold = False
+            if self.hold_timer:
+                self.after_cancel(self.hold_timer)
+                self.hold_timer = None
+
+        if 'waiting:model' in msg:
             self.change_status('ESPERANDO', disable_color, disable_text_color)
             self.info_label['text'] = f'Esperando modelo: "{msg.split("-")[1]}"'
         elif 'model' in msg:
             self.change_status('CARGANDO', disable_color, disable_text_color)
             self.info_label['text'] = f'Cargando modelo: "{msg.split(":")[1]}"'
-        elif msg == 'waiting:testinit':
-            self.change_status('LISTO', disable_color, ready_text_color)
-            self.info_label['text'] = 'Esperando inicio de prueba'
         elif msg == 'waiting:busyon':
             self.change_status('PROBANDO', process_color, ready_text_color)
             self.info_label['text'] = 'Prueba iniciada'
+        elif msg == 'waiting:ramp':
+            self.change_status('PROBANDO', process_color, ready_text_color)
+            self.info_label['text'] = 'Realizando rampa de frequencia'
         elif 'record' in msg:
             self.change_status('PROBANDO', process_color, ready_text_color)
             self.info_label['text'] = f'Esperando flanco #{msg[7]}'
@@ -587,12 +630,6 @@ class GUI(Tk):
         elif msg == 'analyzing':
             self.change_status('PROBANDO', process_color, ready_text_color)
             self.info_label['text'] = 'Analizando resultados'
-        elif msg == 'passed':
-            self.change_status('PASO', pass_color, fail_text_color)
-            self.info_label['text'] = 'Motor paso'
-        elif msg == 'failed':
-            self.change_status('FALLO', fail_color, fail_text_color)
-            self.info_label['text'] = 'Motor fallo'
         elif 'cancelled' in msg:
             self.change_status('CANCELADO', fail_color, fail_text_color)
             reason = msg.split(':')[1]
@@ -606,6 +643,14 @@ class GUI(Tk):
             self.info_label['text'] = f'{msg[6:]}'
         else:
             self.info_label.config(text=msg)
+
+    def clear_result_hold(self):
+        logger.info('GUI: results reset triggered')
+        self.result_hold = False
+        self.hold_timer = None
+        self.change_status('LISTO', disable_color, ready_text_color)
+        self.info_label['text'] = 'Esperando inicio de prueba'
+
 
     def change_status(self, status_msg, bg_clr, fg_clr):
         self.state_frame['bg'] = bg_clr

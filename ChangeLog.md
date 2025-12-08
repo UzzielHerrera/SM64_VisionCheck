@@ -1,5 +1,10 @@
 # SM64 Change Log
 
+## V25.12.08
+### Changed
+* **AC Motor Test Logic (`test.py`):**
+    * **Frequency Ramp Implementation:** Modified the test sequence for AC motors to include a linear frequency ramp. Upon energization, the power supply now transitions smoothly from the model's `start_freq` to `end_freq` over the defined `delta_t` before initiating the encoder measurement phase.
+
 ## V25.12.01
 ### Added
 * **Session Persistence:** Implemented functionality to automatically save the currently selected motor profile and restore it upon application restart.
