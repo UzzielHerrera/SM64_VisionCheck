@@ -73,6 +73,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
     manual_source_active = False
     manual_driver_active = False
 
+    # --- Manual Mode Command Handler
     def handle_manual_cmd(cmd, source_ctrl: PowerSource, motor_drv: MotorDriver):
         nonlocal manual_source_active, manual_driver_active
 
@@ -145,11 +146,14 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
             # --- Per Test try
             try:
                 while test_in_progress:
+                    # --- Emergency stop pressed
                     if stop_flag.is_set():
                         logger.info('FSM: stop flag active')
                         current_state = 'TEST_CANCEL'
 
+                    # --- Manual Mode state
                     if current_state == 'MANUAL_MODE':
+                        # get current inputs state
                         start_value = GPIO.input(PINS.START_SIGNAL)
                         sensor_value = GPIO.input(PINS.SENSOR)
                         busy_value = GPIO.input(PINS.BUSY_SIGNAL)
@@ -160,6 +164,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                         gui_queue.put(f'manual_status:{start_value}, {sensor_value}, {busy_value}, {ok_value}, {scr_value}, {drv_value}')
 
                         try:
+                            # check for command in the queue and handle it
                             cmd = model_queue.get_nowait()
                             if cmd == 'cmd:manual_exit':
                                 logger.info('FSM: exiting manual mode')
@@ -190,6 +195,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                             logger.info('FSM: model queue empty')
                             pass
 
+                        # check if model is a manual mode command
                         if isinstance(new_model, str) and new_model == 'cmd:manual_enter':
                             logger.info('FSM: entering Manual Mode')
 
@@ -305,7 +311,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                         # turn on relay / h-bridge
                         motor_driver.apply_power()
 
-                        # Power source ramp setup
+                        # AC power source ramp setup
                         if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
                             current_state = 'TEST_RAMP_SETUP'
                             continue
@@ -371,6 +377,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                     elif current_state == 'TEST_ANALYZE':
                         gui_queue.put('analyzing')
 
+                        # get pass or fail result
                         is_pass = motor_analyze(edge_record, current_model.calibration_table)
 
                         if is_pass:
@@ -397,6 +404,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                         logger.warning(f'FSM: test cancelled by user')
                         gui_queue.put('cancelled:by_user')
 
+                        # reset outputs
                         GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
                         GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
 
