@@ -31,6 +31,8 @@ class PARAMS:
     TEST_TIMEOUT_SEC = 20.0
     GUI_UPDATE_TIMEOUT_SEC = 0.25
     DEBOUNCE_MS = 20
+
+    # PSU parameters
     PSU_STABILIZE_SEC = 1.5
     PSU_RAMP_STEPS = 10
 

@@ -1,8 +1,9 @@
 import serial
 import logging
 import time
+import math
 from abc import ABC, abstractmethod
-from config import PORTS
+from config import PORTS, PARAMS
 
 # --- Log handler setup
 logger = logging.getLogger('SpinCheck')
@@ -56,6 +57,10 @@ class ACSource(PowerSource):
 
     @abstractmethod
     def get_frequency(self):
+        pass
+
+    @abstractmethod
+    def frequency_ramp(self, start: float=0.0, stop: float=0.0, delta_t: float=0.0):
         pass
 
 
@@ -179,6 +184,31 @@ class BK9801(ACSource, BK_Serial):
         except Exception as e:
             logger.error(e)
             return 0.0
+
+    def frequency_ramp(self, start: float=0.0, stop: float=1.0, delta_t: float=0.0):
+        max_steps = PARAMS.PSU_RAMP_STEPS
+        step_count = 0
+        step_lapse_time = delta_t / max_steps
+
+        if step_lapse_time < 0.05:
+            step_lapse_time = 0.05
+            max_steps = math.floor(delta_t / step_lapse_time)
+
+        start_time = time.time()
+        last_step_time = time.time()
+
+        self.set_frequency(start)
+
+        while step_count < max_steps:
+            if time.time() - last_step_time > step_lapse_time:
+                last_step_time = time.time()
+                step_count += 1
+                progress = step_count / max_steps
+                current_freq = start + (progress * (stop - start))
+                self.set_frequency(current_freq)
+
+        self.set_frequency(stop)
+
 
 # --- BK9201 serial interface
 class BK9201(DCSource, BK_Serial):

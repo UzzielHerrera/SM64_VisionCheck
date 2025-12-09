@@ -322,23 +322,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                     # --- Test Power Source Ramp
                     elif current_state == 'TEST_RAMP_SETUP':
                         gui_queue.put('waiting:ramp')
-
-                        source_controller.set_frequency(current_model.start_freq)
-                        last_step_time = time.time()
-                        step_count = 0
-                        step_lapse_time = current_model.delta_t / PARAMS.PSU_RAMP_STEPS
-
-                        while not stop_flag.is_set():
-                            if time.time() - last_step_time > step_lapse_time:
-                                last_step_time = time.time()
-                                step_count += 1
-                                if step_count % PARAMS.PSU_RAMP_STEPS == 0:
-                                    break
-                                progress = step_count /  PARAMS.PSU_RAMP_STEPS
-                                current_drive_frequency = current_model.start_freq + (progress * (current_model.end_freq - current_model.start_freq))
-                                source_controller.set_frequency(current_drive_frequency)
-
-                        source_controller.set_voltage(current_model.end_freq)
+                        source_controller.frequency_ramp(current_model.start_freq, current_model.end_freq, current_model.delta_t)
                         current_state = 'TEST_ACTIVE'
 
                     # --- Test active state

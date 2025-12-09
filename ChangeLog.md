@@ -1,9 +1,9 @@
 # SM64 Change Log
 
 ## V25.12.08
-### Changed
-* **AC Motor Test Logic (`test.py`):**
-    * **Frequency Ramp Implementation:** Modified the test sequence for AC motors to include a linear frequency ramp. Upon energization, the power supply now transitions smoothly from the model's `start_freq` to `end_freq` over the defined `delta_t` before initiating the encoder measurement phase.
+### Added
+* **AC Source Driver:** Implemented `frequency_ramp` method within the `ACSource` class to encapsulate linear frequency interpolation logic.
+* **AC Motor Test Logic (`test.py`):** Added new state `TEST_RAMP_SETUP`. This state orchestrates the linear frequency ramp from model's `start_freq` to `end_freq` over the defined `delta_t` using the driver's capability.
 
 ## V25.12.01
 ### Added
