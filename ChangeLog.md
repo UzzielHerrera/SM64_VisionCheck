@@ -1,5 +1,21 @@
 # SM64 Change Log
 
+## V25.12.09
+### Added
+* **Motor Analysis Algorithm (`test.py`):**
+    * **Pulse Duration Calculation:** Implemented logic to extract precise pulse widths from the `edge_record` by calculating the delta between consecutive rising and falling edges.
+    * **Sequence Auto-Synchronization:** The analyzer now automatically identifies the starting phase of the rotation (Long, Medium, or Short) by matching the first detected pulse against the `calibration_table`.
+    * **Cyclic Validation:** Enforced a strict cyclic order check (Long → Medium → Short) to detect reverse rotation (wrong sequence) and timing violations (Fast/Slow motor) with a configurable tolerance (e.g., ±5%).
+* **Bidirectional Serial Logic:** Added a protected method `_request_command` to the `BK_Serial` class. This method handles the specific workflow of sending a query command and waiting for a response (Write -> Read), preventing blocking issues on commands that do not return data.
+
+### Changed
+* **Serial Write Optimization:** Refactored `_send_command` in `BK_Serial` to be a "fire-and-forget" operation (Write only). It no longer attempts to read a response line, eliminating timeouts when sending configuration commands (e.g., VOLT 12).
+* **Getter Implementation:** Updated all data retrieval methods (`get_voltage`, `get_frequency`, `get_max_current`) in both `BK9801` and `BK9201` classes to utilize the new `_request_command` method, ensuring reliable data capture.
+
+### Fixed
+* **Power Supply Serial Interface:** Resolved a reference error in the `close_serial` method that prevented the serial port from closing properly during the cleanup phase.
+* **AC Test Loop (`test.py`):** Fixed a bug where the test execution loop would repeat incorrectly after the frequency ramp sequence due to missing variable resets. The state machine now correctly initializes test variables after the ramp setup through `TEST_PRESET` state.
+
 ## V25.12.08
 ### Added
 * **AC Source Driver:** Implemented `frequency_ramp` method within the `ACSource` class to encapsulate linear frequency interpolation logic.

@@ -86,8 +86,17 @@ class BK_Serial(PowerSource):
             self.serial.reset_input_buffer()
             command += '\r\n'
             self.serial.write(command.encode('utf-8'))
-            response = self.serial.readline().decode('utf-8').strip()
+        except Exception as e:
+            logger.error(f'PS: {e}')
+            return 0
 
+    def _request_command(self, command: str):
+        try:
+            self.serial.reset_input_buffer()
+            command += '\r\n'
+            self.serial.write(command.encode('utf-8'))
+
+            response = self.serial.readline().decode('utf-8').strip()
             if not response:
                 logger.error(f'PS: timeout data transmitted->"{command[:-2]}"')
                 return 0
@@ -99,10 +108,11 @@ class BK_Serial(PowerSource):
 
     def close_serial(self):
         try:
-            if self.serial.is_open():
+            if self.serial.is_open:
                 self.serial.close()
+                logger.warning(f'PS: serial port closed')
         except Exception as e:
-            logger.error("PS: Serial port closed")
+            logger.error(f'PS: {e}')
 
     def request_control(self):
         """
@@ -130,7 +140,7 @@ class BK_Serial(PowerSource):
 
     def get_voltage(self):
         try:
-            return float(self._send_command(f'VOLT?'))
+            return float(self._request_command(f'VOLT?'))
         except Exception as e:
             logger.error(e)
             return 0.0
@@ -165,7 +175,7 @@ class BK9801(ACSource, BK_Serial):
 
     def get_frequency(self):
         try:
-            return float(self._send_command(f'FREQ?'))
+            return float(self._request_command(f'FREQ?'))
         except Exception as e:
             logger.error(e)
             return 0.0
@@ -180,7 +190,7 @@ class BK9801(ACSource, BK_Serial):
 
     def get_max_current(self):
         try:
-            return float(self._send_command(f'CONF:PROT:CURR:RMS?'))
+            return float(self._request_command(f'CONF:PROT:CURR:RMS?'))
         except Exception as e:
             logger.error(e)
             return 0.0
@@ -225,7 +235,7 @@ class BK9201(DCSource, BK_Serial):
 
     def get_max_current(self):
         try:
-            return float(self._send_command(f'CURR?'))
+            return float(self._request_command(f'CURR?'))
         except Exception as e:
             logger.error(e)
             return 0.0

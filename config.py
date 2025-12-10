@@ -28,9 +28,9 @@ class PORTS:
 class PARAMS:
     """ Parameters that define the test execution """
     TARGET_EDGES = 7        # Number of sensor edges to detect
-    TEST_TIMEOUT_SEC = 20.0
-    GUI_UPDATE_TIMEOUT_SEC = 0.25
-    DEBOUNCE_MS = 20
+    TEST_TIMEOUT_SEC = 10.0
+    GUI_UPDATE_TIMEOUT_SEC = 0.300
+    DEBOUNCE_SEC = 0.010
 
     # PSU parameters
     PSU_STABILIZE_SEC = 1.5
@@ -39,9 +39,9 @@ class PARAMS:
     # Wait times (in seconds)
     YIELD_DELAY_SEC = 0.05
     MANUAL_YIELD_DELAY_SEC = 0.05
-    POLL_DELAY_SEC = 0.002
+    POLL_DELAY_SEC = 0.005
     BUSY_DELAY_SEC = 0.2
     PASS_WAIT_SEC = 0.2
 
     # Analysis
-    TOLERANCE = 0.10
+    TOLERANCE = 0.05

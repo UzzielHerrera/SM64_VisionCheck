@@ -39,11 +39,64 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 def motor_analyze(edge_record, calibration_table):
-    logger.warning(f'FSM: Motor Analyzing {edge_record}:{calibration_table}')
-    if len(edge_record) >= 7:
-        return True
-    else:
-        return False
+    """
+    Analysis edge record data to give a pass/fail status.
+    :param edge_record: list of dict [{'time': float, 'state': int}, ...]
+    :param calibration_table: dict ['long': float, 'medium': float, 'small': float]
+    :return: dict {'status': 'PASS'|'FAIL', 'reason': str}
+    """
+    logger.info(f'FSM: Motor Analyzing {edge_record}:{calibration_table}')
+    try:
+
+        # --- Safe record length
+        if len(edge_record) != PARAMS.TARGET_EDGES:
+            return {'status': 'FAIL', 'reason': 'Invalid edge count'}
+
+        # --- Extract pulse duration
+        analysis_times = [nxt['time'] - cur['time'] for cur, nxt in zip(edge_record, edge_record[1:]) if cur['state']]
+        if not analysis_times:
+            return {'status': 'FAIL', 'reason': 'No edges found'}
+        logger.debug(f'FSM: Extacted times: {[f"{t:0.3f}" for t in analysis_times]}')
+
+        # --- Start index detection
+        sequence_names = ['long', 'medium', 'small']
+        nominal_times = [calibration_table[x] for x in sequence_names]
+
+        start_index = -1
+        first_delta = analysis_times[0]
+
+        for i, nominal_time in enumerate(nominal_times):
+            lower_limit = nominal_time * (1 - PARAMS.TOLERANCE)
+            upper_limit = nominal_time * (1 + PARAMS.TOLERANCE)
+            if lower_limit <= first_delta <= upper_limit:
+                start_index = i
+                break
+
+        if start_index == -1:
+            return {'status': 'FAIL', 'reason': f'First data "{first_delta:0.2f}" out of range'}
+
+        # --- Validate Full Sequence
+        current_sequence_index = start_index
+
+        for i, measured_time in enumerate(analysis_times):
+            expected_type = sequence_names[current_sequence_index]
+            nominal_time = nominal_times[current_sequence_index]
+
+            lower_limit = nominal_time * (1 - PARAMS.TOLERANCE)
+            upper_limit = nominal_time * (1 + PARAMS.TOLERANCE)
+
+            if measured_time < lower_limit:
+                return {'status': 'FAIL', 'reason': f'Fast motor in segment {expected_type} (Value: {measured_time:0.2f})'}
+
+            if measured_time > upper_limit:
+                return {'status': 'FAIL', 'reason': f'Slow motor in segment {expected_type} (Value: {measured_time:0.2f})'}
+
+            current_sequence_index = (current_sequence_index + 1) % len(sequence_names)
+
+        return {'status': 'PASS', 'reason': 'Sequence and timing correct'}
+    except Exception as e:
+        logger.error(f'FSM: {e}')
+        return {'status': 'FAIL', 'reason': str(e)}
 
 def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queue: Queue, stop_flag: Event):
     """
@@ -90,7 +143,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                 source_ctrl.set_voltage(current_model.voltage)
                 source_ctrl.set_max_current(current_model.max_current)
                 if isinstance(source_ctrl, ACSource):
-                    source_ctrl.set_frequency(current_model.frequency)
+                    source_ctrl.set_frequency(current_model.start_freq)
                 source_ctrl.enable_output()
                 manual_source_active = True
                 return 'source:On'
@@ -206,14 +259,13 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
 
                         # check if model has been changed
                         if new_model != '0' and new_model != current_model:
+                            if new_model is None:
+                                logger.info('FSM: shutting down finite state machine')
+                                return
 
                             # driver cleanup
                             if source_controller is not None: source_controller.cleanup()
                             if motor_driver is not None: motor_driver.cleanup()
-
-                            if new_model is None:
-                                logger.info('FSM: shutting down finiste state machine')
-                                return
 
                             logger.info(f'FSM: changing model to {new_model.name}')
 
@@ -280,7 +332,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
 
                             # look up for start signal
                             if GPIO.input(PINS.START_SIGNAL) == GPIO.HIGH:
-                                if stop_flag.wait(PARAMS.YIELD_DELAY_SEC): continue
+                                if stop_flag.wait(PARAMS.DEBOUNCE_SEC): continue
                                 if GPIO.input(PINS.START_SIGNAL) == GPIO.HIGH:
                                     logger.info(f'FSM: starting test')
                                     GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
@@ -305,7 +357,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                     # --- Test init state
                     elif current_state == 'TEST_INIT':
                         gui_queue.put('waiting:busyon')
-                        if stop_flag.wait(PARAMS.BUSY_DELAY_SEC): continue
                         GPIO.output(PINS.BUSY_SIGNAL, GPIO.HIGH)
 
                         # turn on relay / h-bridge
@@ -316,19 +367,22 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                             current_state = 'TEST_RAMP_SETUP'
                             continue
 
-                        # Polling prepare
-                        edge_record = []
-                        last_pin_state = GPIO.input(PINS.SENSOR)
-
-                        start_time = time.time()
-                        gui_update_time = time.time()
-
-                        current_state = 'TEST_ACTIVE'
+                        # DC power source test preset
+                        current_state = 'TEST_PRESET'
 
                     # --- Test Power Source Ramp
                     elif current_state == 'TEST_RAMP_SETUP':
                         gui_queue.put('waiting:ramp')
                         source_controller.frequency_ramp(current_model.start_freq, current_model.end_freq, current_model.delta_t)
+                        current_state = 'TEST_PRESET'
+
+                    # --- Test variable pre-set
+                    elif current_state == 'TEST_PRESET':
+                        # Polling prepare
+                        edge_record = []
+                        last_pin_state = GPIO.input(PINS.SENSOR)
+                        start_time = time.time()
+                        gui_update_time = time.time()
                         current_state = 'TEST_ACTIVE'
 
                     # --- Test active state
@@ -341,7 +395,8 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
 
                         # edge detection
                         if current_pin_state != last_pin_state:
-                            edge_record.append((now, last_pin_state))
+                            record = {'time': now, 'state': current_pin_state}
+                            edge_record.append(record)
                             logger.info(f'FSM: Edge {len(edge_record)}->({now},{current_pin_state})')
 
                         last_pin_state = current_pin_state
@@ -378,14 +433,17 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                         gui_queue.put('analyzing')
 
                         # get pass or fail result
-                        is_pass = motor_analyze(edge_record, current_model.calibration_table)
+                        results = motor_analyze(edge_record, current_model.calibration_table)
 
-                        if is_pass:
+                        if results['status'] == 'PASS':
+                            logger.info(f'FSM: Test results: {results['status']}')
                             gui_queue.put('passed')
                             GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
                             if stop_flag.wait(PARAMS.PASS_WAIT_SEC): continue
                             GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
                         else:
+                            logger.info(f'FSM: Test results: {results['status']} reason: {results['reason']}')
+
                             gui_queue.put('failed')
                             GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
                             GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)

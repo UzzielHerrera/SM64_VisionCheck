@@ -138,5 +138,15 @@
         "end_freq": 120.0,
         "delta_t": 1.0,
         "calibration_table": []
+    },
+    "ACDUMMY": {
+        "name": "ACDUMMY",
+        "motor_type": "AC",
+        "voltage": 24.0,
+        "max_current": 0.25,
+        "start_freq": 60.0,
+        "end_freq": 150.0,
+        "delta_t": 1.0,
+        "calibration_table": []
     }
 }
