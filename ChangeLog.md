@@ -1,5 +1,17 @@
 # SM64 Change Log
 
+## V25.12.15
+### Added
+* **Calibration Logic (`motor_calibrate`):** Implemented a dedicated calibration function that processes a continuous stream of pulse data (defined by `CALIBRATION_TARGET_EDGES`).
+    * **Auto-Sorting:** The algorithm automatically splits the recorded edges into groups of three (triplets) and sorts them to identify Short, Medium, and Long pulses regardless of the start phase.
+    * **Dynamic Tolerance:** Tolerance is now automatically calculated based on the maximum deviation detected across all captured cycles, plus a safety offset (`TOLERANCE_OFFSET`).
+
+### Changed
+* Updated `Readme.md` documentation file.
+* **FSM Calibration Flow:** Refactored the `MANUAL_MODE` and `TEST_ANALYZE` states to support the new calibration routine.
+    * The system now captures a larger dataset (e.g., 12 edges) in a single run during calibration mode, distinct from the standard test edge count.
+    * Calibration results are now emitted via the GUI queue for persistence.
+
 ## V25.12.09
 ### Added
 * **Motor Analysis Algorithm (`test.py`):**

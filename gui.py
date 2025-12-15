@@ -555,7 +555,11 @@ class GUI(Tk):
                 if user_input == 'exit':
                     self.on_close()
                 else:
-                    self.gui_queue.put(user_input)
+                    if 'cmd' in user_input:
+
+                        self.model_queue.put(user_input)
+                    else:
+                        self.gui_queue.put(user_input)
             except (EOFError, KeyboardInterrupt):
                 break
 
@@ -566,7 +570,7 @@ class GUI(Tk):
         try:
             while True:
                 msg = self.gui_queue.get_nowait()
-                logger.info(f'GUI: received message "{msg}"')
+                # logger.info(f'GUI: received message "{msg}"')
                 self.update_gui_from_message(msg)
         except queue.Empty:
             pass
@@ -576,6 +580,23 @@ class GUI(Tk):
 
     def update_gui_from_message(self, msg: str):
         """Parses messages and updates colors/text."""
+
+        if isinstance(msg, tuple):
+            tag, data = msg
+            if tag == 'calibrated':
+                logger.warning(f'GUI: calibration results: "{data}"')
+                model = self.model_manager.get_model(self.lbl_current_model['text'])
+                if model:
+                    model.calibration_table = data
+                    self.model_manager.save_all()
+                    self.result_hold = True
+                    if self.hold_timer: self.after_cancel(self.hold_timer)
+                    self.hold_timer = self.after(2000, self.clear_result_hold)
+                    self.change_status('CALIBRADO', pass_color, fail_text_color)
+                    self.info_label['text'] = 'Calibracion guardada'
+                    logger.warning(f'GUI: calibration table "{data}" saved in model "{self.lbl_current_model["text"]}"')
+                return
+
         if msg.startswith('manual_status'):
             try:
                 data = msg.split(':')[1]
@@ -584,6 +605,7 @@ class GUI(Tk):
                     self.manual_window.update_manual(start, sensor, busy, ok, src, drv)
             except Exception as e:
                 pass
+            return
 
         if msg=='passed' or msg=='failed':
             self.result_hold = True
@@ -596,7 +618,6 @@ class GUI(Tk):
                 self.change_status('FALLO', fail_color, fail_text_color)
                 self.info_label['text'] = 'Motor fallo'
             return
-
         elif msg == 'waiting:testinit':
             if not self.result_hold:
                 self.change_status('LISTO', disable_color, ready_text_color)

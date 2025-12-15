@@ -27,8 +27,12 @@ class PORTS:
 
 class PARAMS:
     """ Parameters that define the test execution """
-    TARGET_EDGES = 7        # Number of sensor edges to detect
+    TEST_TARGET_EDGES = 7
+    CALIBRATION_TARGET_EDGES = 25
+    TEST_TARGET_PULSES = 3
+    CALIBRATION_TARGET_PULSES = 4
     TEST_TIMEOUT_SEC = 10.0
+    CALIBRATION_TIMEOUT_SEC = 35.0
     GUI_UPDATE_TIMEOUT_SEC = 0.300
     DEBOUNCE_SEC = 0.010
 
@@ -44,4 +48,4 @@ class PARAMS:
     PASS_WAIT_SEC = 0.2
 
     # Analysis
-    TOLERANCE = 0.05
+    TOLERANCE_OFFSET = 0.05

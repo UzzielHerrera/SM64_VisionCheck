@@ -1,11 +1,10 @@
-import threading
 import time
 import logging
 from queue import Queue, Empty
 from threading import Event
 from config import PINS, PORTS, PARAMS
-from models import MotorModel, ModelManager
-from powersupply import PowerSource, ACSource, DCSource, BK9801, BK9201
+from models import MotorModel
+from powersupply import PowerSource, ACSource, BK9801, BK9201
 from motordriver import MotorDriver, ACDriver, DCDriver
 
 # --- Mocking for Development
@@ -25,6 +24,7 @@ except (ImportError, RuntimeError):
         def output(self, *args, **kwargs): pass
         def input(self, *args, **kwargs): return 0
         def setmode(self, *args, **kwargs): pass
+        def getmode(self, *args, **kwargs): return 0
         def cleanup(self, *args, **kwargs): pass
         def setwarnings(self, *args, **kwargs): pass
     GPIO = MockGPIO()
@@ -41,15 +41,15 @@ if not logger.handlers:
 def motor_analyze(edge_record, calibration_table):
     """
     Analysis edge record data to give a pass/fail status.
-    :param edge_record: list of dict [{'time': float, 'state': int}, ...]
-    :param calibration_table: dict ['long': float, 'medium': float, 'small': float]
+    :param edge_record: list of 'PARAMS.TEST_TARGET_EDGES' number of edge dicts [{'time': float, 'state': int}, ...]
+    :param calibration_table: calibration table dict ['long': float, 'medium': float, 'short': float, 'tolerance': float]
     :return: dict {'status': 'PASS'|'FAIL', 'reason': str}
     """
-    logger.info(f'FSM: Motor Analyzing {edge_record}:{calibration_table}')
+    logger.info(f'FSM: Motor analyzing {edge_record}:{calibration_table}')
     try:
 
         # --- Safe record length
-        if len(edge_record) != PARAMS.TARGET_EDGES:
+        if len(edge_record) != PARAMS.TEST_TARGET_EDGES:
             return {'status': 'FAIL', 'reason': 'Invalid edge count'}
 
         # --- Extract pulse duration
@@ -59,15 +59,15 @@ def motor_analyze(edge_record, calibration_table):
         logger.debug(f'FSM: Extacted times: {[f"{t:0.3f}" for t in analysis_times]}')
 
         # --- Start index detection
-        sequence_names = ['long', 'medium', 'small']
+        sequence_names = ['long', 'medium', 'short']
         nominal_times = [calibration_table[x] for x in sequence_names]
 
         start_index = -1
         first_delta = analysis_times[0]
 
         for i, nominal_time in enumerate(nominal_times):
-            lower_limit = nominal_time * (1 - PARAMS.TOLERANCE)
-            upper_limit = nominal_time * (1 + PARAMS.TOLERANCE)
+            lower_limit = nominal_time * (1 - calibration_table['tolerance'])
+            upper_limit = nominal_time * (1 + calibration_table['tolerance'])
             if lower_limit <= first_delta <= upper_limit:
                 start_index = i
                 break
@@ -82,8 +82,8 @@ def motor_analyze(edge_record, calibration_table):
             expected_type = sequence_names[current_sequence_index]
             nominal_time = nominal_times[current_sequence_index]
 
-            lower_limit = nominal_time * (1 - PARAMS.TOLERANCE)
-            upper_limit = nominal_time * (1 + PARAMS.TOLERANCE)
+            lower_limit = nominal_time * (1 - calibration_table['tolerance'])
+            upper_limit = nominal_time * (1 + calibration_table['tolerance'])
 
             if measured_time < lower_limit:
                 return {'status': 'FAIL', 'reason': f'Fast motor in segment {expected_type} (Value: {measured_time:0.2f})'}
@@ -97,6 +97,78 @@ def motor_analyze(edge_record, calibration_table):
     except Exception as e:
         logger.error(f'FSM: {e}')
         return {'status': 'FAIL', 'reason': str(e)}
+
+def motor_calibrate(edge_record):
+    """
+    Analysis edge record data to give a pass/fail status.
+    :param edge_record: list of 'PARAMS.CALIBRATION_TARGET_EDGES' number of edge dicts [{'time': float, 'state': int}, ...]
+    :return: calibration table as dict {'long': float, 'medium': float, 'short': float, 'tolerance': float}
+    """
+    # --- Empty calibration
+    null_calibration = {'long': 0.0, 'medium': 0.0, 'short': 0.0, 'tolerance': 0.0}
+    logger.info(f'FSM: Motor calibrating -> {edge_record}')
+    try:
+
+        # --- Safe record length
+        if len(edge_record) != PARAMS.CALIBRATION_TARGET_EDGES:
+            return null_calibration
+
+        # --- Extract pulse duration
+        analysis_times = [nxt['time'] - cur['time'] for cur, nxt in zip(edge_record, edge_record[1:]) if cur['state']]
+        if not analysis_times:
+            return null_calibration
+        logger.debug(f'FSM: Extacted times: {[f"{t:0.3f}" for t in analysis_times]}')
+
+        if len(analysis_times) != PARAMS.CALIBRATION_TARGET_PULSES:
+            return null_calibration
+
+        # --- Divide and sort in groups of pulses
+        cycles = []
+        for i in range(0, 12, 3):
+            cycle_group = analysis_times[i:i+3]
+            cycles.append(sorted(cycle_group))
+
+        # --- Separate in category
+        short_values = [c[0] for c in cycles]
+        medium_values = [c[1] for c in cycles]
+        long_values = [c[2] for c in cycles]
+
+        # --- Calculate mean values
+        short_avg = sum(short_values) / len(short_values)
+        medium_avg = sum(medium_values) / len(medium_values)
+        long_avg = sum(long_values) / len(long_values)
+
+        # --- Calculate max deviation
+        max_deviation = 0.0
+
+        for value in short_values:
+            dev = abs(value - short_avg) / short_avg
+            if dev > max_deviation:
+                max_deviation = dev
+
+        for value in medium_values:
+            dev = abs(value - medium_avg) / medium_avg
+            if dev > max_deviation:
+                max_deviation = dev
+
+        for value in long_values:
+            dev = abs(value - long_avg) / long_avg
+            if dev > max_deviation:
+                max_deviation = dev
+
+        calibration_tolerance = max_deviation + PARAMS.TOLERANCE_OFFSET
+
+        # --- Return values
+        return {
+            'long': float(f'{long_avg:0.3f}'),
+            'medium': float(f'{medium_avg:0.3f}'),
+            'short': float(f'{medium_avg:0.3f}'),
+            'tolerance': float(f'{calibration_tolerance:0.2f}'),
+        }
+
+    except Exception as e:
+        logger.error(f'FSM: {e}')
+        return null_calibration
 
 def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queue: Queue, stop_flag: Event):
     """
@@ -115,8 +187,10 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
     motor_driver: MotorDriver = None
     source_is_active = False
 
-    # --- Thread-sage recording variables
-    calibration_table = []
+    # --- Calibration variables
+    is_calibrating = False
+
+    # --- Recording variables
     edge_record = []
     last_pin_state = None
     start_time = time.time()
@@ -127,13 +201,13 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
     manual_driver_active = False
 
     # --- Manual Mode Command Handler
-    def handle_manual_cmd(cmd, source_ctrl: PowerSource, motor_drv: MotorDriver):
+    def handle_manual_cmd(command, source_ctrl: PowerSource, motor_drv: MotorDriver):
         nonlocal manual_source_active, manual_driver_active
 
         if not source_ctrl or not motor_drv:
             return 'error:no_model'
 
-        if cmd == 'manual:toggle_source':
+        if command == 'manual:toggle_source':
             if manual_source_active:
                 source_ctrl.disable_output()
                 manual_source_active = False
@@ -147,7 +221,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                 source_ctrl.enable_output()
                 manual_source_active = True
                 return 'source:On'
-        elif cmd == 'manual:toggle_driver':
+        elif command == 'manual:toggle_driver':
             if manual_driver_active:
                 motor_drv.remove_power()
                 manual_driver_active = False
@@ -158,11 +232,11 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                 motor_drv.apply_power()
                 manual_driver_active = True
                 return 'driver:On'
-        elif cmd == 'manual:toggle_busy':
+        elif command == 'manual:toggle_busy':
             state = GPIO.input(PINS.BUSY_SIGNAL)
             GPIO.output(PINS.BUSY_SIGNAL, not state)
             return f'busy:{state}'
-        elif cmd == 'manual:toggle_ok':
+        elif command == 'manual:toggle_ok':
             state = GPIO.input(PINS.OK_SIGNAL)
             GPIO.output(PINS.OK_SIGNAL, not state)
             return f'ok:{state}'
@@ -194,7 +268,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
             # --- Per Test Variables
             current_state = 'MODEL_CHECK'
             test_in_progress = True
-            calibration_table = None
 
             # --- Per Test try
             try:
@@ -257,6 +330,11 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                             current_state = 'MANUAL_MODE'
                             continue
 
+                        if isinstance(new_model, str) and new_model == 'cmd:calibration_enter':
+                            logger.info('FSM: entering Calibration mode')
+                            is_calibrating = True
+                            continue
+
                         # check if model has been changed
                         if new_model != '0' and new_model != current_model:
                             if new_model is None:
@@ -283,7 +361,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                     # --- Start state
                     elif current_state == 'MODEL_LOAD':
                         gui_queue.put(f'model:{current_model.name}')
-                        calibration_table = current_model.calibration_table
 
                         # create drivers only if none
                         if source_controller is None:
@@ -345,7 +422,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                                     logger.info('FSM: new model received')
                                     current_state = 'MODEL_CHECK'
                                     break
-                            except Exception:
+                            except:
                                 pass
 
                             # mpu yield delay
@@ -402,13 +479,15 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                         last_pin_state = current_pin_state
 
                         # check completion
-                        if len(edge_record) >= PARAMS.TARGET_EDGES:
+                        if ((not is_calibrating and len(edge_record) >= PARAMS.TEST_TARGET_EDGES) or
+                                (is_calibrating and len(edge_record) >= PARAMS.CALIBRATION_TARGET_EDGES)):
                             logger.info(f'FSM: All edges detected')
                             current_state = 'TEST_STOP'
                             continue
 
                         # check timeout
-                        if (time.time() - start_time) > PARAMS.TEST_TIMEOUT_SEC:
+                        if ((not is_calibrating and (time.time() - start_time) > PARAMS.TEST_TIMEOUT_SEC) or
+                                (is_calibrating and (time.time() - gui_update_time) > PARAMS.CALIBRATION_TIMEOUT_SEC)):
                             logger.info('FSM: Test timed out')
                             current_state = 'TEST_STOP'
 
@@ -432,19 +511,27 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                     elif current_state == 'TEST_ANALYZE':
                         gui_queue.put('analyzing')
 
-                        # get pass or fail result
-                        results = motor_analyze(edge_record, current_model.calibration_table)
+                        # get pass or fail result if not calibrating
+                        if not is_calibrating:
+                            results = motor_analyze(edge_record, current_model.calibration_table)
 
-                        if results['status'] == 'PASS':
-                            logger.info(f'FSM: Test results: {results['status']}')
-                            gui_queue.put('passed')
-                            GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
-                            if stop_flag.wait(PARAMS.PASS_WAIT_SEC): continue
-                            GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
+                            if results['status'] == 'PASS':
+                                logger.info(f'FSM: Test results: {results['status']}')
+                                gui_queue.put('passed')
+                                GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
+                                if stop_flag.wait(PARAMS.PASS_WAIT_SEC): continue
+                                GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
+                            else:
+                                logger.info(f'FSM: Test results: {results['status']} reason: {results['reason']}')
+
+                                gui_queue.put('failed')
+                                GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
+                                GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
+                        # save calibration data to model
                         else:
-                            logger.info(f'FSM: Test results: {results['status']} reason: {results['reason']}')
-
-                            gui_queue.put('failed')
+                            calibration_data = motor_calibrate(edge_record)
+                            logger.info(f'FSM: Calibration results: "{calibration_data}"')
+                            gui_queue.put(('calibrated', calibration_data))
                             GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
                             GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
 
@@ -453,6 +540,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                     # --- Test complete state
                     elif current_state == 'TEST_COMPLETE':
                         test_in_progress = False
+                        is_calibrating = False
 
                     # --- Test cancel state
                     elif current_state == 'TEST_CANCEL':
@@ -474,7 +562,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, model_queu
                         # clean up motor driver
                         if motor_driver: motor_driver.cleanup()
 
-                        logger.warning(f'FSM: test cancelled by user')
+                        logger.warning(f'FSM: test cancelled by timeout')
                         gui_queue.put(f'cancelled:timeout')
 
                         GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
