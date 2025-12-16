@@ -1,5 +1,18 @@
 # SM64 Change Log
 
+## V25.12.16
+### Added
+* **Automated Data Logging (`test.py`):** Implemented a robust results logging system for traceability and quality control.
+    * **CSV Persistence:** Test results are now automatically saved to a logs/ directory using monthly rotating files (e.g., test_results_2025-12.csv).
+    * **Detailed Metrics:** The log captures `Timestamp`, `Model_Name`, `Status`, `Reason`, and the specific measured durations for `Short`, `Medium`, and `Long` pulses.
+    * **Helper Logic:** Added `log_test_result()` to handle safe file I/O within the `TEST_ANALYZE` state.
+* **GUI Session Statistics:** Integrated real-time counters into the main interface to track session performance.
+    * **Pass/Fail Tracking:** Displays the total number of Passed and Failed tests.
+    * **Dynamic Updates:** Counters increment automatically based on the status messages received from the FSM worker thread (`passed`/`failed`).
+
+### Changed
+* **Code Maintenance:** Standardized all inline code comments to the `# --- Comment.` format to ensure consistent style and improved readability throughout the file.
+
 ## V25.12.15
 ### Added
 * **Calibration Logic (`motor_calibrate`):** Implemented a dedicated calibration function that processes a continuous stream of pulse data (defined by `CALIBRATION_TARGET_EDGES`).

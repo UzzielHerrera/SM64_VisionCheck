@@ -1,11 +1,11 @@
-import serial
-import logging
 import time
 import math
-from abc import ABC, abstractmethod
+import serial
+import logging
 from config import PORTS, PARAMS
+from abc import ABC, abstractmethod
 
-# --- Log handler setup
+# --- Log handler setup.
 logger = logging.getLogger('SpinCheck')
 if not logger.handlers:
     logger.setLevel(logging.DEBUG)
@@ -14,7 +14,7 @@ if not logger.handlers:
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-# --- Power source contract
+# --- Power source contract.
 class PowerSource(ABC):
     @abstractmethod
     def request_control(self):
@@ -49,7 +49,7 @@ class PowerSource(ABC):
         pass
 
 
-# --- AC source contract
+# --- AC source contract.
 class ACSource(PowerSource):
     @abstractmethod
     def set_frequency(self, hertz: float= 0.0):
@@ -64,12 +64,12 @@ class ACSource(PowerSource):
         pass
 
 
-# --- DC source contract
+# --- DC source contract.
 class DCSource(PowerSource):
     pass
 
 
-# --- BK common serial interface
+# --- BK common serial interface.
 class BK_Serial(PowerSource):
     def __init__(self, port: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -82,6 +82,7 @@ class BK_Serial(PowerSource):
             self.serial = None
 
     def _send_command(self, command: str):
+        """ Send command to serial port """
         try:
             self.serial.reset_input_buffer()
             command += '\r\n'
@@ -91,6 +92,7 @@ class BK_Serial(PowerSource):
             return 0
 
     def _request_command(self, command: str):
+        """ Send command and wait for an answer from serial port """
         try:
             self.serial.reset_input_buffer()
             command += '\r\n'
@@ -107,6 +109,7 @@ class BK_Serial(PowerSource):
             return 0
 
     def close_serial(self):
+        """ Close serial port """
         try:
             if self.serial.is_open:
                 self.serial.close()
@@ -115,30 +118,25 @@ class BK_Serial(PowerSource):
             logger.error(f'PS: {e}')
 
     def request_control(self):
-        """
-        This command is used to switch to the remote control mode.
-        :return:
-        """
+        """ Switch to the remote control mode. """
         self._send_command('SYST:REM')
 
     def cleanup(self):
-        """
-        This command is used to clear the error codes and information.
-        :return:
-        """
+        """ Clear the error codes and information. """
         self.disable_output()
         self._send_command('SYST:CLE')
         self.close_serial()
 
     def set_voltage(self, volts: float = 0.0):
         """
-        This command is used to set a voltage output of the power supply.
+        Set a voltage output of the power supply.
         :param volts: voltage in volts
         :return:
         """
         self._send_command(f'VOLT {volts:0.2f}')
 
     def get_voltage(self):
+        """ Get voltage output of the power supply. """
         try:
             return float(self._request_command(f'VOLT?'))
         except Exception as e:
@@ -146,17 +144,11 @@ class BK_Serial(PowerSource):
             return 0.0
 
     def enable_output(self):
-        """
-        This command is used to drive the output relay of the power supply to ON.
-        :return:
-        """
+        """ Drive the output relay of the power supply to ON. """
         self._send_command('OUTP 1')
 
     def disable_output(self):
-        """
-        This command is used to drive the output relay of the power supply to OFF.
-        :return:
-        """
+        """ Drive the output relay of the power supply to OFF. """
         self._send_command('OUTP 0')
 
 
@@ -167,13 +159,14 @@ class BK9801(ACSource, BK_Serial):
 
     def set_frequency(self, hertz: float = 0.0):
         """
-        This command is used to set the output frequency value.
+        Set the output frequency value of the power supply.
         :param hertz: frequency in hertz
         :return:
         """
         self._send_command(f'FREQ {hertz:0.2f}')
 
     def get_frequency(self):
+        """ Get the output frequency of the power supply. """
         try:
             return float(self._request_command(f'FREQ?'))
         except Exception as e:
@@ -182,13 +175,14 @@ class BK9801(ACSource, BK_Serial):
 
     def set_max_current(self, amps: float = 0.0):
         """
-        This command is used to set the RMS current protection point (Irms-Protect).
+        Set the RMS current protection point (Irms-Protect).
         :param amps: amperage in amps
         :return:
         """
         self._send_command(f'CONF:PROT:CURR:RMS {amps:0.2f}')
 
     def get_max_current(self):
+        """ Get the output current protection point (Irms-Protect). """
         try:
             return float(self._request_command(f'CONF:PROT:CURR:RMS?'))
         except Exception as e:
@@ -196,6 +190,13 @@ class BK9801(ACSource, BK_Serial):
             return 0.0
 
     def frequency_ramp(self, start: float=0.0, stop: float=1.0, delta_t: float=0.0):
+        """
+        Frequency ramp between `start` and `stop` during `delta_t`.
+        :param start:
+        :param stop:
+        :param delta_t:
+        :return:
+        """
         max_steps = PARAMS.PSU_RAMP_STEPS
         step_count = 0
         step_lapse_time = delta_t / max_steps
@@ -227,13 +228,14 @@ class BK9201(DCSource, BK_Serial):
 
     def set_max_current(self, amps: float = 0.0):
         """
-        This command is used to set the current protection point (I-Protect).
+        Set the current protection point (I-Protect).
         :param amps: amperage in amps
         :return:
         """
         self._send_command(f'CURR {amps:0.2f}')
 
     def get_max_current(self):
+        """ Get the current protection point (I-Protect). """
         try:
             return float(self._request_command(f'CURR?'))
         except Exception as e:

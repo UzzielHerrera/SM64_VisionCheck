@@ -3,7 +3,7 @@ from threading import Thread, Event
 import time
 from abc import ABC, abstractmethod
 
-# --- Mocking for Development
+# --- Mocking for Development.
 try:
     import RPi.GPIO as GPIO
     print("Real RPi.GPIO library loaded.")
@@ -22,7 +22,7 @@ except (ImportError, RuntimeError):
         def setwarnings(self, *args, **kwargs): print(f"MOCK_GPIO: setwarnings({args}, {kwargs})")
     GPIO = MockGPIO()
 
-# --- Log handler setup
+# --- Log handler setup.
 logger = logging.getLogger('SpinCheck')
 if not logger.handlers:
     logger.setLevel(logging.DEBUG)
@@ -32,7 +32,7 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 
-# --- Motor driver contracts
+# --- Motor driver contracts.
 class MotorDriver(ABC):
     @abstractmethod
     def apply_power(self):
@@ -46,20 +46,22 @@ class MotorDriver(ABC):
     def cleanup(self):
         pass
 
-# --- AC Motor driver implementation
+# --- AC Motor driver implementation.
 class ACDriver(MotorDriver):
     def __init__(self, ac_relay_pin: int) -> None:
         self.relay_pin = ac_relay_pin
-        # --- GPIO initial configuration
+        # --- GPIO initial configuration.
         GPIO.setup(self.relay_pin, GPIO.OUT)
         self.remove_power()
         logger.info(f'ACDriver: initialized on pin {self.relay_pin}')
 
     def apply_power(self):
+        """ Enables AC relay. """
         logger.info(f'ACDriver: closing relay (Pin {self.relay_pin} HIGH)')
         GPIO.output(self.relay_pin, GPIO.HIGH)
 
     def remove_power(self):
+        """ Disables AC relay. """
         logger.info(f'ACDriver: opening relay (Pin {self.relay_pin} LOW)')
         GPIO.output(self.relay_pin, GPIO.LOW)
 
@@ -67,7 +69,7 @@ class ACDriver(MotorDriver):
         self.remove_power()
 
 
-# --- DC Motor driver implementation
+# --- DC Motor driver implementation.
 class DCDriver(MotorDriver):
     def __init__(self, dc_relay_pin: int, h_bridge_enable: int, h_bridge_pos_pin: int, h_bridge_neg_pin: int) -> None:
         self.relay_pin = dc_relay_pin
@@ -87,41 +89,35 @@ class DCDriver(MotorDriver):
         logger.info(f"DCDriver: (Threaded) initialized on pins {self.pins}")
 
     def _set_off(self):
+        """ Turn off state for H-Bridge. """
         GPIO.output(self.en_pin, GPIO.LOW)
         GPIO.output(self.pos_pin, GPIO.LOW)
         GPIO.output(self.neg_pin, GPIO.LOW)
 
     def _set_no_signal(self):
-        """
-        Sets H-Bridge to a no signal or brake state.
-        :return:
-        """
+        """ Sets H-Bridge to a no signal or brake state. """
         GPIO.output(self.en_pin, GPIO.HIGH)
         GPIO.output(self.pos_pin, GPIO.LOW)
         GPIO.output(self.neg_pin, GPIO.LOW)
 
     def _set_positive(self):
-        """
-        Sets H-Bridge to a positive state.
-        :return:
-        """
+        """ Sets H-Bridge to a positive state. """
         GPIO.output(self.en_pin, GPIO.HIGH)
         GPIO.output(self.pos_pin, GPIO.HIGH)
         GPIO.output(self.neg_pin, GPIO.LOW)
 
     def _set_negative(self):
-        """
-        Sets H-Bridge to a negative state.
-        :return:
-        """
+        """ Sets H-Bridge to a negative state. """
         GPIO.output(self.en_pin, GPIO.HIGH)
         GPIO.output(self.pos_pin, GPIO.LOW)
         GPIO.output(self.neg_pin, GPIO.HIGH)
 
     def _signal_loop(self):
+        """ H-Bridge thread loop. """
         logger.info("DCDriver: H-Bridge loop started")
         step_duration_sec = 0.0625 # 62.5ms
 
+        # --- H-Bridge state transition.
         signal_steps = [self._set_no_signal, self._set_positive, self._set_no_signal, self._set_negative]
 
         current_step_index = 0
@@ -130,6 +126,7 @@ class DCDriver(MotorDriver):
         while not self.stop_signal_event.is_set():
             now = time.perf_counter()
             if now >= next_step_time:
+                # --- Perform current state.
                 signal_steps[current_step_index]()
                 next_step_time += step_duration_sec
                 current_step_index = (current_step_index + 1) % 4
@@ -139,10 +136,7 @@ class DCDriver(MotorDriver):
         self._set_off()
 
     def apply_power(self):
-        """
-        Start signal generation thread and enables the DC relay
-        :return:
-        """
+        """ Start signal generation thread and enables the DC relay. """
         if self.signal_thread is None:
             self.stop_signal_event.clear()
             self.signal_thread = Thread(target=self._signal_loop, daemon=True)
@@ -154,10 +148,7 @@ class DCDriver(MotorDriver):
             logger.warning('DCDriver: signal thread already running')
 
     def remove_power(self):
-        """
-        Stops signal generation thread and disables the DC relay
-        :return:
-        """
+        """ Stops signal generation thread and disables the DC relay. """
         if self.signal_thread is not None:
             self.stop_signal_event.set()
 

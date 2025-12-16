@@ -3,7 +3,6 @@ from functools import partial
 from tkinter import *
 from tkinter import ttk, messagebox
 import os
-import time
 import threading
 import logging
 from models import MotorModel, ModelManager
@@ -44,20 +43,20 @@ text_font = ("Arial", 12)
 
 class ModelCreator(Toplevel):
     def __init__(self, parent, manager, callback):
-        # --- Top level initialization
+        # --- Top level initialization.
         super().__init__(parent)
 
-        # --- Setup
+        # --- Setup.
         self.title(f'{equipment_name}_{sw_version}->ModelCreator')
 
-        # --- Fullscreen inherit
+        # --- Fullscreen inherit.
         if parent.attributes('-fullscreen'):
             self.after(250, self.__force_fullscreen)
         else:
             self['width'] = 800
             self['height'] = 480
 
-        # --- Grab focus
+        # --- Grab focus.
         self.transient(parent)
         self.grab_set()
         self.focus_set()
@@ -65,7 +64,7 @@ class ModelCreator(Toplevel):
         self.manager = manager
         self.callback = callback
 
-        # --- Form fields
+        # --- Form fields.
         Label(self, text="Name:").pack(pady=5)
         self.entry_name = Entry(self)
         self.entry_name.pack()
@@ -103,6 +102,7 @@ class ModelCreator(Toplevel):
         Button(self, text='Cancelar', command=self.destroy, bg=fail_color).pack(pady=20)
 
     def save(self):
+        """ Save the model for persistence. """
         try:
             name = self.entry_name.get()
             m_type = self.combo_type.get()
@@ -114,7 +114,7 @@ class ModelCreator(Toplevel):
 
             if not name: raise ValueError("Name is required")
 
-            # Create new model (calibration table starts empty, requires calibration)
+            # --- Create new model (calibration table starts empty, requires calibration).
             new_model = MotorModel(name, m_type, volt, curr, sfreq, efreq, delta_t, calibration_table=[])
             self.manager.add_model(new_model)
 
@@ -125,6 +125,7 @@ class ModelCreator(Toplevel):
             messagebox.showerror("Error", f"Invalid Input: {e}")
 
     def __force_fullscreen(self):
+        """ Force fullscreen mode. """
         self.attributes('-fullscreen', True)
         self.update_idletasks()
 
@@ -136,14 +137,14 @@ class ModelSelector(Toplevel):
         self.manager = manager
         self.on_select_callback = on_select_callback
 
-        # --- Fullscreen inherit
+        # --- Fullscreen inherit.
         if parent.attributes('-fullscreen'):
             self.after(250, self.__force_fullscreen)
         else:
             self['width'] = 800
             self['height'] = 480
 
-        # --- Grab focus
+        # --- Grab focus.
         self.transient(parent)
         self.grab_set()
         self.focus_set()
@@ -151,6 +152,7 @@ class ModelSelector(Toplevel):
         self['bg'] = root_bg_color
         self.delete_mode = False
 
+        # --- Variables setup.
         screen_width = 800
         screen_height = 480
         offset = 15
@@ -160,13 +162,13 @@ class ModelSelector(Toplevel):
         models_y = offset + header_height + offset
         models_height = screen_height - models_y - offset - commands_height - offset
 
-        # --- Header
+        # --- Header drawing section.
         header = Frame(self, bg=frame_bg_color, width=header_width, height=header_height)
         header.place(x=offset, y=offset, anchor='nw')
         self.lbl_title = Label(header, bg=frame_bg_color, text='Seleccionar modelo', font= title_font)
         self.lbl_title.place(x=int(header_width/2),y=3,anchor='n')
 
-        # --- Commands
+        # --- Commands drawing section.
         commands = Frame(self, bg=frame_bg_color, width=header_width, height=commands_height)
         commands.place(x=offset, y=screen_height - offset, anchor='sw')
 
@@ -182,17 +184,19 @@ class ModelSelector(Toplevel):
                 height=2, command=self.destroy, justify='center').place(x=int(header_width/2),y=5, anchor='n')
 
 
-        # --- Models
+        # --- Models drawing section.
         self.models_selector = Frame(self, bg=frame_bg_color, width=header_width, height=models_height)
         self.models_selector.place(x=int(screen_width / 2), y=models_y, anchor='n')
 
         self.refresh_models()
 
     def __force_fullscreen(self):
+        """ Force fullscreen mode. """
         self.attributes('-fullscreen', True)
         self.update_idletasks()
 
     def toggle_delete_mode(self):
+        """ Toggle delete mode. """
         self.delete_mode = not self.delete_mode
 
         if self.delete_mode:
@@ -205,6 +209,7 @@ class ModelSelector(Toplevel):
         self.refresh_models()
 
     def refresh_models(self):
+        """ Refresh models draw list. """
         for widget in self.models_selector.winfo_children():
             widget.destroy()
 
@@ -220,7 +225,7 @@ class ModelSelector(Toplevel):
         else:
             btn_bg = frame_bg_color
 
-        # Create a button for every model
+        # --- Create a button for every model.
         for i, name in enumerate(names):
             row_index = i % rows
             col_index = i // rows
@@ -231,21 +236,25 @@ class ModelSelector(Toplevel):
             btn.grid(row=row_index, column=col_index, padx=5, pady=5, sticky='nsew')
 
     def on_model_clicked(self, name):
-        """Triggered when a model button is pressed."""
+        """ Triggered when a model button is pressed. """
+        # --- Delete selected model.
         if self.delete_mode:
+            # --- Show confirmation window.
             if messagebox.askyesno('Confirmar Borrado', f'¿Estás seguro de ELIMINAR permanentemente el modelo "{name}"'):
                 success = self.manager.delete_model(name)
                 if success:
                     self.toggle_delete_mode()
                 else:
                     messagebox.showerror('Error', f'No se pudo borrar el modelo "{name}"')
+
+        # --- Load selected model.
         else:
             logger.info(f'ModelSelector: user picked "{name}"')
             self.on_select_callback(name)
             self.destroy()
 
     def open_creator(self):
-        """Opens the creator window."""
+        """ Opens the creator window. """
         ModelCreator(self, self.manager, self.refresh_models)
 
 
@@ -257,22 +266,22 @@ class ManualController(Toplevel):
         self['bg'] = root_bg_color
         self.protocol('WM_DELETE_WINDOW', self.close_manual_mode)
 
-        # --- Fullscreen inherit
+        # --- Fullscreen inherit.
         if parent.attributes('-fullscreen'):
             self.after(250, self.__force_fullscreen)
         else:
             self['width'] = 800
             self['height'] = 480
 
-        # --- Grab focus
+        # --- Grab focus.
         self.transient(parent)
         self.grab_set()
         self.focus_set()
 
-        # --- Start manual mode
+        # --- Start manual mode in the FSM.
         self.send_command('cmd:manual_enter')
 
-        # --- GUI variables
+        # --- GUI variables.
         screen_width = 800
         screen_height = 480
 
@@ -290,13 +299,13 @@ class ManualController(Toplevel):
         status_width = int((screen_width - 3 * offset) / 2)
         status_height = main_height
 
-        # --- Header section
+        # --- Header drawing section.
         header_frame = Frame(self, width=header_width, height=header_height, bg=frame_bg_color)
         header_frame.place(x=offset, y=offset, anchor='nw')
         Label(header_frame, text=f"MODO MANUAL -> {current_model_name},{model_type}", font=title_font, bg=frame_bg_color,
                 fg=text_color).place(x=int(header_width/2), y=3, anchor='n')
 
-        # --- CMD section
+        # --- Command drawing section.
         cmd_frame = Frame(self, width=cmd_width, height=cmd_height, bg=frame_bg_color)
         cmd_frame.place(x=offset, y=main_y, anchor='nw')
         Label(cmd_frame, text="--- Comandos ---", font=subtitle_font,
@@ -307,7 +316,7 @@ class ManualController(Toplevel):
         self.btn_busy = self.create_toggle_btn(cmd_frame, 'BUSY', 'manual:toggle_busy', cmd_center, 13*offset)
         self.btn_ok = self.create_toggle_btn(cmd_frame, 'OK', 'manual:toggle_ok', cmd_center, 18*offset)
 
-        # --- Status section
+        # --- Status drawing section.
         status_frame = Frame(self, width=status_width, height=status_height, bg=frame_bg_color)
         status_frame.place(x=screen_width - offset, y=main_y, anchor='ne')
         Label(status_frame, text="--- Estado ---", font=subtitle_font,
@@ -320,6 +329,7 @@ class ManualController(Toplevel):
         self.led_sensor = self.create_led(status_frame, 'Sensor signal', offset, 8*offset)
 
     def create_led(self, parent, text, x, y):
+        """ Create a LED indicator for an input. """
         c = Canvas(parent, width=30, height=30, bg=frame_bg_color, highlightthickness=0)
         c.place(x=x, y=y, anchor='w')
         l = c.create_oval(2,2,28,28,fill=fail_color, outline='gray')
@@ -328,6 +338,7 @@ class ManualController(Toplevel):
         return (c, l)
 
     def create_toggle_btn(self, parent, text, cmd, x, y):
+        """ Create a Toggle button for an output. """
         btn = Button(parent, text=text, font=subtitle_font, height=2, bg=disable_color, fg=text_color, width=20,
                         activebackground=disable_color, activeforeground=text_color,
                         command= lambda: self.send_command(cmd))
@@ -335,9 +346,12 @@ class ManualController(Toplevel):
         return btn
 
     def update_manual(self, start, sensor, busy, ok, src_on, drv_on):
+        """ Update manual mode color indicators for inputs and outputs. """
+        # --- Update inputs.
         self.led_start[0].itemconfig(self.led_start[1], fill=pass_color if int(start) else fail_color)
         self.led_sensor[0].itemconfig(self.led_sensor[1], fill=pass_color if int(sensor) else fail_color)
 
+        # --- Update outputs.
         self.btn_busy['bg'] = pass_color if int(busy) else disable_color
         self.btn_busy['activebackground'] = pass_color if int(busy) else disable_color
         self.btn_ok['bg'] = pass_color if int(ok) else disable_color
@@ -348,59 +362,61 @@ class ManualController(Toplevel):
         self.btn_driver['activebackground'] = pass_color if int(drv_on) else disable_color
 
     def __force_fullscreen(self):
+        """ Force fullscreen mode. """
         self.attributes('-fullscreen', True)
         self.update_idletasks()
 
     def close_manual_mode(self):
+        """ Cancel manual mode. """
         self.send_command('cmd:manual_exit')
         self.destroy()
 
 
 class GUI(Tk):
     def __init__(self):
-        # --- Tkinter initialization
+        # --- Tkinter initialization.
         logger.info('Initializing Tkinter')
         super().__init__()
 
-        # --- Protocol over-write
+        # --- Protocol over-write.
         self.protocol('WM_DELETE_WINDOW', self.on_close)
 
-        # --- Data and communications
+        # --- Data and communications.
         self.model_manager = ModelManager()
 
-        # --- Queues for thread communication
+        # --- Queues for thread communication.
         self.gui_queue = queue.Queue()
         self.model_queue = queue.Queue()
         self.stop_flag = threading.Event()
         self.shutdown_timer_id = None
         self.gui_running = True
 
-        # --- GUI variables
+        # --- GUI variables.
         self.result_hold = False
         self.hold_timer = None
 
-        # --- GUI creation
+        # --- GUI creation.
         logger.info('Drawing GUI')
         self.__draw__()
 
-        # --- Input threads
+        # --- Input threads.
         self.input_thread = threading.Thread(target=self.console_input, daemon=True)
         self.input_thread.start()
 
-        # --- Start worker thread
+        # --- Start worker thread.
         self.start_worker()
 
-        # --- Start polling loop
+        # --- Start polling loop.
         self.check_queue()
 
-
     def __force_fullscreen(self):
+        """ Force fullscreen mode. """
         self.attributes('-fullscreen', True)
         self.update_idletasks()
 
-
     def __draw__(self):
-        # --- Variables
+        """ Draw the GUI. """
+        # --- Variables setup.
         screen_width = 800
         screen_height = 480
 
@@ -424,7 +440,7 @@ class GUI(Tk):
 
         command_height = status_height - offset - model_height
 
-        # --- Main windows settings
+        # --- Main windows settings.
         self.title(f'{equipment_name}_{sw_version}->AutomaticTest')
         self['bg'] = root_bg_color
 
@@ -439,13 +455,13 @@ class GUI(Tk):
             self['height'] = screen_height
             self.after(250, self.__force_fullscreen)
 
-        # --- Header section
+        # --- Header drawing section.
         header_frame = Frame(self, width=header_width, height=header_height, bg=frame_bg_color)
         header_frame.place(x=offset, y=offset, anchor='nw')
         Label(header_frame, text="SM64 & SM66", font=title_font, bg=frame_bg_color,
                 fg=text_color).place(x=int(header_width/2), y=3, anchor='n')
 
-        # --- Model section
+        # --- Model drawing section.
         model_frame = Frame(self, width=model_width, height=model_height, bg=frame_bg_color)
         model_frame.place(x=offset, y=main_y, anchor='nw')
 
@@ -462,7 +478,7 @@ class GUI(Tk):
                 width=24, height=2, command=self.open_model_manager).place(x=int(model_width/2), y=10 * inner_offset, anchor='n')
 
 
-        # --- Status section
+        # --- Status drawing section.
         status_frame = Frame(self, width=status_width, height=status_height, bg=frame_bg_color)
         status_frame.place(x=screen_width - offset, y=main_y, anchor='ne')
 
@@ -477,9 +493,15 @@ class GUI(Tk):
         self.status_label.place(x = int(state_width / 2), y = 5 * inner_offset, anchor='n')
 
         self.info_label = Label(status_frame, text="Esperando modelo...", font=text_font, bg=frame_bg_color)
-        self.info_label.place(x=int(status_width / 2), y=main_height - inner_offset, anchor='s')
+        self.info_label.place(x=int(status_width / 2), y=main_height - 3 *  inner_offset, anchor='s')
 
-        # --- CONTROLS ---
+        self.lbl_good_counter = Label(status_frame, text="Buenas: 0", font=subtitle_font, bg=frame_bg_color)
+        self.lbl_good_counter.place(x=offset, y= main_height - inner_offset, anchor='sw')
+
+        self.lbl_bad_counter = Label(status_frame, text="Malas: 0", font=subtitle_font, bg=frame_bg_color)
+        self.lbl_bad_counter.place(x=status_width - offset, y= main_height - inner_offset, anchor='se')
+
+        # --- Controls drawing section.
         control_frame = Frame(self, width=model_width, height=command_height,  bg=frame_bg_color)
         control_frame.place(x=offset, y=screen_height - offset, anchor='sw')
 
@@ -497,25 +519,27 @@ class GUI(Tk):
                 font=subtitle_font, width=11, height=2,
                 command=self.open_manual_mode).place(x=model_width-inner_offset, y=3 * inner_offset, anchor='ne')
 
-    # --- LOGIC METHODS
+    # --- Logic methods.
     def open_manual_mode(self):
-        """Opens the TopLevel Manual Controller"""
+        """ Opens the TopLevel Manual Controller. """
         current_model_name = self.lbl_current_model['text']
         if current_model_name == '* Sin Seleccionar *':
             logger.warning('GUI: no model selected')
             return
         model_obj = self.model_manager.get_model(current_model_name)
+
         def send_to_worker(cmd):
             self.model_queue.put(cmd)
 
+        # --- Starts manual controller in the GUI.
         self.manual_window = ManualController(self, send_to_worker, self.lbl_current_model['text'], model_obj.motor_type)
 
     def open_model_manager(self):
-        """Opens the TopLevel Model Selector"""
+        """ Opens the TopLevel Model Selector. """
         ModelSelector(self, self.model_manager, self.load_model_by_name)
 
     def load_model_by_name(self, name):
-        """Callback used by the ModelManager to load a model"""
+        """ Callback used by the ModelManager to load a model. """
         model = self.model_manager.get_model(name)
         if model:
             self.lbl_current_model['text'] = name
@@ -525,10 +549,11 @@ class GUI(Tk):
             self.gui_queue.put(f'waiting:model-{name}')
 
     def start_worker(self):
-        """Starts the persistent worker thread."""
+        """ Starts the persistent worker thread. """
         last_model_name = self.model_manager.get_last_used()
         init_model = None
 
+        # --- Get last running model or create a default model.
         if last_model_name:
             init_model = self.model_manager.get_model(last_model_name)
 
@@ -540,6 +565,7 @@ class GUI(Tk):
             if hasattr(self, 'lbl_current_model'):
                 self.lbl_current_model['text'] = init_model.name
 
+        # --- Start test FSM thread.
         self.worker_thread = threading.Thread(
             target=finite_state_machine,
             args=(self.gui_queue, init_model, self.model_queue, self.stop_flag),
@@ -548,29 +574,32 @@ class GUI(Tk):
         self.worker_thread.start()
 
     def console_input(self):
+        """ Function used to interact directly with the GUI and FSM trough console input. """
         while self.gui_running:
             try:
                 logger.info('Enter command >')
+                # --- Wait for console input message.
                 user_input = input()
                 if user_input == 'exit':
                     self.on_close()
                 else:
+                    # --- Write commands to FSM.
                     if 'cmd' in user_input:
-
                         self.model_queue.put(user_input)
+                    # --- Write command to GUI.
                     else:
                         self.gui_queue.put(user_input)
             except (EOFError, KeyboardInterrupt):
                 break
 
     def check_queue(self):
-        """Polls the queue for messages from the worker."""
+        """ Polls the queue for messages from the worker. """
         if not self.gui_running:
             return
         try:
             while True:
+                # --- Check if new message is in the queue and handle it.
                 msg = self.gui_queue.get_nowait()
-                # logger.info(f'GUI: received message "{msg}"')
                 self.update_gui_from_message(msg)
         except queue.Empty:
             pass
@@ -579,8 +608,9 @@ class GUI(Tk):
                 self.after(100, self.check_queue)
 
     def update_gui_from_message(self, msg: str):
-        """Parses messages and updates colors/text."""
+        """ Parses messages and updates colors/text. """
 
+        # --- Handle calibration tuple to save it for persistence.
         if isinstance(msg, tuple):
             tag, data = msg
             if tag == 'calibrated':
@@ -597,6 +627,7 @@ class GUI(Tk):
                     logger.warning(f'GUI: calibration table "{data}" saved in model "{self.lbl_current_model["text"]}"')
                 return
 
+        # --- Handle manual mode's messages.
         if msg.startswith('manual_status'):
             try:
                 data = msg.split(':')[1]
@@ -607,14 +638,18 @@ class GUI(Tk):
                 pass
             return
 
+        # --- Handle results messages.
         if msg=='passed' or msg=='failed':
+            # --- Set results for 2 seconds persistence over other messages.
             self.result_hold = True
             if self.hold_timer: self.after_cancel(self.hold_timer)
             self.hold_timer = self.after(2000, self.clear_result_hold)
             if msg == 'passed':
+                self.add_goods()
                 self.change_status('PASO', pass_color, fail_text_color)
                 self.info_label['text'] = 'Motor paso'
             elif msg == 'failed':
+                self.add_bads()
                 self.change_status('FALLO', fail_color, fail_text_color)
                 self.info_label['text'] = 'Motor fallo'
             return
@@ -624,12 +659,14 @@ class GUI(Tk):
                 self.info_label['text'] = 'Esperando inicio de prueba'
             return
 
+        # --- Resets 2-second persistence of results if a new test started.
         if self.result_hold:
             self.result_hold = False
             if self.hold_timer:
                 self.after_cancel(self.hold_timer)
                 self.hold_timer = None
 
+        # --- Handle in-test messages.
         if 'waiting:model' in msg:
             self.change_status('ESPERANDO', disable_color, disable_text_color)
             self.info_label['text'] = f'Esperando modelo: "{msg.split("-")[1]}"'
@@ -666,26 +703,44 @@ class GUI(Tk):
             self.info_label.config(text=msg)
 
     def clear_result_hold(self):
+        """ Clear the result 2-second persistence. """
         logger.info('GUI: results reset triggered')
         self.result_hold = False
         self.hold_timer = None
         self.change_status('LISTO', disable_color, ready_text_color)
         self.info_label['text'] = 'Esperando inicio de prueba'
 
-
     def change_status(self, status_msg, bg_clr, fg_clr):
+        """ Update status label and frame. """
         self.state_frame['bg'] = bg_clr
         self.status_label['bg'] = bg_clr
         self.status_label['fg'] = fg_clr
         self.status_label['text'] = status_msg
 
+    def add_goods(self):
+        """ Add one piece to GUI's good counter. """
+        text = self.lbl_good_counter['text']
+        pieces = int(text.split(':')[1]) + 1
+        text = f'{text.split(':')[0]}: {pieces}'
+        self.lbl_good_counter['text'] = text
+
+    def add_bads(self):
+        """ Add one piece to GUI's bad counter. """
+        text = self.lbl_bad_counter['text']
+        pieces = int(text.split(':')[1]) + 1
+        text = f'{text.split(':')[0]}: {pieces}'
+        self.lbl_bad_counter['text'] = text
+
     def on_stop_btn_press(self, event):
+        """ E-Stop button pressed actions. """
         self.stop_test()
 
         self.btn_stop['bg'] = darker_fail_color
         self.shutdown_timer_id = self.after(3000, self.perform_shutdown)
 
     def on_stop_btn_release(self, event):
+        """ E-Stop button released actions. """
+        # --- Cancel shutdown timer.
         if self.shutdown_timer_id is not None:
             self.after_cancel(self.shutdown_timer_id)
             self.shutdown_timer_id = None
@@ -693,28 +748,35 @@ class GUI(Tk):
         self.btn_stop['bg'] = fail_color
 
     def perform_shutdown(self):
+        """ Starts shutdown procedure. """
         logger.warning(f'GUI: shutting down')
         self.shutdown_timer_id = None
         self.on_close()
 
     def stop_test(self):
-        """Sends stop signal to worker."""
+        """ Sends stop signal to worker. """
         logger.warning("Stop Button Pressed")
         self.stop_flag.set()
 
     def on_close(self):
+        """ Handles closing the GUI. """
         logger.warning('GUI: initializing application shutdown')
 
+        # --- Inject venom pill to threads that trigger shutdown.
         self.gui_running = False
         self.model_queue.put(None)
 
         self.status_label.config(text="APAGANDO", bg=fail_color, fg=fail_text_color)
         self.state_frame.config(bg=fail_color)
-        self.update()  # Force redraw so user sees the message
 
+        # --- Force redraw to see shutdown message.
+        self.update()
+
+        # --- Wait for console_input thread to stops.
         if self.input_thread.is_alive():
             self.input_thread.join(timeout=1)
 
+        # --- Wait for FSM thread to stops.
         try:
             if self.worker_thread.is_alive():
                 self.worker_thread.join(timeout=10.0)
