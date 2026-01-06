@@ -13,7 +13,7 @@ from test import finite_state_machine
 equipment_name = 'TS111125'
 sw_version = 'v26.01.06'
 
-# --- Log handler setup.
+# --- Logger handler setup.
 logger = logging.getLogger('SpinCheck')
 if not logger.handlers:
     logger.setLevel(logging.DEBUG)
