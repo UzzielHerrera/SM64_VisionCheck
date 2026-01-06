@@ -1,5 +1,16 @@
 # SM64 Change Log
 
+## V26.01.06
+### Added
+* **Tooling Actuator Control:** Integrated GPIO logic for `TOOLING_NEAR_POS` and `TOOLING_FAR_POS` to automate test fixture engagement.
+    * **Engage:** The tooling moves to the **Near** position immediately after the AC frequency ramp sequence (`TEST_RAMP_SETUP`) completes.
+    * **Retract:** The tooling automatically returns to the **Far** position during the data analysis phase (`TEST_ANALYZE`) or upon test cancellation (`TEST_CANCEL`).
+    * **Manual Override:** Implemented a new command (`manual:toggle_tooling`) in the Manual Mode handler, allowing operators to toggle the tooling position directly via the GUI.
+
+### Changed
+* **FSM State Management:** Replaced string literals with an `IntEnum` class (`State`) to define system states, eliminating the use of raw strings for state tracking.
+* **State Transition Logic:** Implemented a state setting mechanism (via `set_state` logic/wrapper) that automatically logs the state name upon transition, removing the need for manual logging in every step.
+
 ## V25.12.16
 ### Added
 * **Automated Data Logging (`test.py`):** Implemented a robust results logging system for traceability and quality control.

@@ -11,7 +11,7 @@ from test import finite_state_machine
 
 # --- Equipments information.
 equipment_name = 'TS111125'
-sw_version = 'v25.11.18'
+sw_version = 'v26.01.06'
 
 # --- Log handler setup.
 logger = logging.getLogger('SpinCheck')
@@ -315,6 +315,7 @@ class ManualController(Toplevel):
         self.btn_driver = self.create_toggle_btn(cmd_frame, 'Motor', 'manual:toggle_driver', cmd_center, 8*offset)
         self.btn_busy = self.create_toggle_btn(cmd_frame, 'BUSY', 'manual:toggle_busy', cmd_center, 13*offset)
         self.btn_ok = self.create_toggle_btn(cmd_frame, 'OK', 'manual:toggle_ok', cmd_center, 18*offset)
+        self.btn_tooling = self.create_toggle_btn(cmd_frame, 'TOOLING', 'manual:toggle_tooling', cmd_center, 23*offset)
 
         # --- Status drawing section.
         status_frame = Frame(self, width=status_width, height=status_height, bg=frame_bg_color)
@@ -327,6 +328,7 @@ class ManualController(Toplevel):
 
         self.led_start = self.create_led(status_frame, 'Start signal', offset, 4*offset)
         self.led_sensor = self.create_led(status_frame, 'Sensor signal', offset, 8*offset)
+        self.led_tooling = self.create_led(status_frame, 'Tooling signal', offset, 12*offset)
 
     def create_led(self, parent, text, x, y):
         """ Create a LED indicator for an input. """
@@ -345,11 +347,12 @@ class ManualController(Toplevel):
         btn.place(x=x, y=y, anchor='n')
         return btn
 
-    def update_manual(self, start, sensor, busy, ok, src_on, drv_on):
+    def update_manual(self, start, sensor, busy, ok, src_on, drv_on, tool_down, tool_pos):
         """ Update manual mode color indicators for inputs and outputs. """
         # --- Update inputs.
         self.led_start[0].itemconfig(self.led_start[1], fill=pass_color if int(start) else fail_color)
         self.led_sensor[0].itemconfig(self.led_sensor[1], fill=pass_color if int(sensor) else fail_color)
+        self.led_tooling[0].itemconfig(self.led_tooling[1], fill=pass_color if int(tool_down) else fail_color)
 
         # --- Update outputs.
         self.btn_busy['bg'] = pass_color if int(busy) else disable_color
@@ -360,6 +363,8 @@ class ManualController(Toplevel):
         self.btn_source['activebackground'] = pass_color if int(src_on) else disable_color
         self.btn_driver['bg'] = pass_color if int(drv_on) else disable_color
         self.btn_driver['activebackground'] = pass_color if int(drv_on) else disable_color
+        self.btn_tooling['bg'] = pass_color if int(tool_pos) else disable_color
+        self.btn_tooling['activebackground'] = pass_color if int(tool_pos) else disable_color
 
     def __force_fullscreen(self):
         """ Force fullscreen mode. """
@@ -637,9 +642,9 @@ class GUI(Tk):
         if msg.startswith('manual_status'):
             try:
                 data = msg.split(':')[1]
-                start, sensor, busy, ok, src, drv = data.split(',')
+                start, sensor, busy, ok, src, drv, tool_down, tool_pos = data.split(',')
                 if hasattr(self, 'manual_window') and self.manual_window.winfo_exists():
-                    self.manual_window.update_manual(start, sensor, busy, ok, src, drv)
+                    self.manual_window.update_manual(start, sensor, busy, ok, src, drv, tool_down, tool_pos)
             except Exception as e:
                 pass
             return

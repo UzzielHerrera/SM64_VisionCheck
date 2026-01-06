@@ -2,6 +2,7 @@ import os
 import csv
 import time
 import logging
+from enum import IntEnum
 from datetime import datetime
 from queue import Queue, Empty
 from threading import Event
@@ -40,6 +41,22 @@ if not logger.handlers:
     formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+
+# --- Test States.
+class State(IntEnum):
+    MANUAL_MODE = 1
+    MODEL_CHECK = 2
+    MODEL_LOAD = 3
+    MODEL_SETTING = 4
+    TEST_WAITING = 5
+    TEST_INIT = 6
+    TEST_RAMP_SETUP = 7
+    TEST_PRESET = 8
+    TEST_ACTIVE = 9
+    TEST_STOP = 10
+    TEST_ANALYZE = 11
+    TEST_COMPLETE = 12
+    TEST_CANCEL = 13
 
 def motor_analyze(edge_record, calibration_table):
     """
@@ -231,6 +248,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
     logger.info('FSM: starting finite state machine')
     # --- FSM state variables
     current_model = initial_model
+    current_state = State.MODEL_CHECK
     source_controller: PowerSource = None
     motor_driver: MotorDriver = None
     source_is_active = False
@@ -248,7 +266,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
     manual_source_active = False
     manual_driver_active = False
 
-    # --- Manual mode command handler.
+    # --- Function handlers.
     def handle_manual_cmd(command, source_ctrl: PowerSource, motor_drv: MotorDriver):
         nonlocal manual_source_active, manual_driver_active
 
@@ -288,8 +306,20 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
             state = GPIO.input(PINS.OK_SIGNAL)
             GPIO.output(PINS.OK_SIGNAL, not state)
             return f'ok:{state}'
+        elif command == 'manual:toggle_tooling':
+            state = GPIO.input(PINS.TOOLING_FAR_POS)
+            GPIO.output(PINS.TOOLING_FAR_POS, not state)
+            GPIO.output(PINS.TOOLING_NEAR_POS, state)
+            return f'tooling:{state}'
 
         return 'error:unknown'
+
+    def set_state(new_state):
+        nonlocal current_state
+        # --- If different state, process change.
+        if new_state != current_state:
+            current_state = new_state
+            logger.info(f'FSM: {new_state.name}')
 
     # --- GPIO config.
     current_rpi_mode = GPIO.getmode()
@@ -305,6 +335,9 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
     # --- GPIO setup.
     GPIO.setup(PINS.START_SIGNAL, GPIO.IN)
     GPIO.setup(PINS.SENSOR, GPIO.IN)
+    GPIO.setup(PINS.TOOLING_DOWN, GPIO.IN)
+    GPIO.setup(PINS.TOOLING_FAR_POS, GPIO.OUT)
+    GPIO.setup(PINS.TOOLING_NEAR_POS, GPIO.OUT)
     GPIO.setup(PINS.BUSY_SIGNAL, GPIO.OUT)
     GPIO.setup(PINS.OK_SIGNAL, GPIO.OUT)
 
@@ -314,7 +347,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
         # --- System infinite loop.
         while True:
             # --- Per Test Variables.
-            current_state = 'MODEL_CHECK'
+            set_state(State.MODEL_CHECK)
             test_in_progress = True
 
             # --- Per Test try.
@@ -323,19 +356,22 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                     # --- Emergency stop pressed.
                     if stop_flag.is_set():
                         logger.info('FSM: stop flag active')
-                        current_state = 'TEST_CANCEL'
+                        set_state(State.TEST_CANCEL)
 
                     # --- Manual Mode state.
-                    if current_state == 'MANUAL_MODE':
+                    if current_state == State.MANUAL_MODE:
                         # --- Get current inputs state.
                         start_value = GPIO.input(PINS.START_SIGNAL)
                         sensor_value = GPIO.input(PINS.SENSOR)
                         busy_value = GPIO.input(PINS.BUSY_SIGNAL)
                         ok_value = GPIO.input(PINS.OK_SIGNAL)
+                        toolpos_value = GPIO.input(PINS.TOOLING_FAR_POS)
+                        tooling_value = GPIO.input(PINS.TOOLING_DOWN)
 
                         scr_value = 1 if manual_source_active else 0
                         drv_value = 1 if manual_driver_active else 0
-                        gui_queue.put(f'manual_status:{start_value}, {sensor_value}, {busy_value}, {ok_value}, {scr_value}, {drv_value}')
+                        gui_queue.put(f'manual_status:{start_value}, {sensor_value}, {busy_value}, {ok_value},'
+                                        f' {scr_value}, {drv_value}, {toolpos_value}, {tooling_value}')
 
                         try:
                             # --- Check for command in the queue and handle it.
@@ -348,7 +384,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                                 GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
                                 manual_source_active = False
                                 manual_driver_active = False
-                                current_state = 'MODEL_CHECK'
+                                set_state(State.MODEL_CHECK)
                             elif isinstance(cmd, str) and cmd.startswith('manual:'):
                                 response = handle_manual_cmd(cmd, source_controller, motor_driver)
                                 logger.info(f'FSM: manual action {response}')
@@ -358,7 +394,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         time.sleep(PARAMS.MANUAL_YIELD_DELAY_SEC)
 
                     # --- Model check state.
-                    if current_state == 'MODEL_CHECK':
+                    if current_state == State.MODEL_CHECK:
                         new_model = '0'
 
                         # --- Get new model from the queue.
@@ -375,7 +411,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
 
                             manual_source_active = False
                             manual_driver_active = False
-                            current_state = 'MANUAL_MODE'
+                            set_state(State.MANUAL_MODE)
                             continue
 
                         if isinstance(new_model, str) and new_model == 'cmd:calibration_enter':
@@ -402,12 +438,12 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                             source_is_active = False
 
                         if not source_is_active:
-                            current_state = 'MODEL_LOAD'
+                            set_state(State.MODEL_LOAD)
                         else :
-                            current_state = 'TEST_WAITING'
+                            set_state(State.TEST_WAITING)
 
                     # --- Model load state.
-                    elif current_state == 'MODEL_LOAD':
+                    elif current_state == State.MODEL_LOAD:
                         gui_queue.put(f'model:{current_model.name}')
 
                         # --- Create drivers only if none.
@@ -426,10 +462,10 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                                 logger.info(f'FSM: attaching ACDriver to motor driver')
                                 motor_driver = ACDriver(PINS.AC_RELAY)
 
-                        current_state = 'MODEL_SETTING'
+                        set_state(State.MODEL_SETTING)
 
                     # --- Model setting source state.
-                    elif current_state == 'MODEL_SETTING':
+                    elif current_state == State.MODEL_SETTING:
                         # --- Enables remote control and turn source output off.
                         source_controller.request_control()
 
@@ -446,10 +482,10 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                             if stop_flag.wait(PARAMS.PSU_STABILIZE_SEC): continue
                             source_is_active = True
 
-                        current_state = 'TEST_WAITING'
+                        set_state(State.TEST_WAITING)
 
                     # --- Waiting start state.
-                    elif current_state == 'TEST_WAITING':
+                    elif current_state == State.TEST_WAITING:
                         gui_queue.put('waiting:testinit')
 
                         while not stop_flag.is_set():
@@ -461,14 +497,14 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                                 if GPIO.input(PINS.START_SIGNAL) == GPIO.HIGH:
                                     logger.info(f'FSM: starting test')
                                     GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
-                                    current_state = 'TEST_INIT'
+                                    set_state(State.TEST_INIT)
                                     break
 
                             # --- Look up for model change.
                             try:
                                 if not fsm_queue.empty():
                                     logger.info('FSM: new model received')
-                                    current_state = 'MODEL_CHECK'
+                                    set_state(State.MODEL_CHECK)
                                     break
                             except:
                                 pass
@@ -477,10 +513,10 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                             time.sleep(PARAMS.YIELD_DELAY_SEC)
 
                         # --- Reset loop to handle model change or stop flag.
-                        if current_state != 'TEST_INIT': continue
+                        if current_state != State.TEST_INIT: continue
 
                     # --- Test init state.
-                    elif current_state == 'TEST_INIT':
+                    elif current_state == State.TEST_INIT:
                         gui_queue.put('waiting:busyon')
                         GPIO.output(PINS.BUSY_SIGNAL, GPIO.HIGH)
 
@@ -491,29 +527,33 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
 
                         # --- AC power source ramp setup.
                         if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
-                            current_state = 'TEST_RAMP_SETUP'
+                            set_state(State.TEST_RAMP_SETUP)
                             continue
 
                         # --- DC power source test preset.
-                        current_state = 'TEST_PRESET'
+                        set_state(State.TEST_PRESET)
 
                     # --- Test Power Source Ramp.
-                    elif current_state == 'TEST_RAMP_SETUP':
+                    elif current_state == State.TEST_RAMP_SETUP:
                         gui_queue.put('waiting:ramp')
                         source_controller.frequency_ramp(current_model.start_freq, current_model.end_freq, current_model.delta_t)
-                        current_state = 'TEST_PRESET'
+                        set_state(State.TEST_PRESET)
 
                     # --- Test variable pre-set.
-                    elif current_state == 'TEST_PRESET':
+                    elif current_state == State.TEST_PRESET:
+                        # --- Set tooling to near position.
+                        GPIO.output(PINS.TOOLING_FAR_POS, GPIO.LOW)
+                        GPIO.output(PINS.TOOLING_NEAR_POS, GPIO.HIGH)
+
                         # --- Polling prepare.
                         edge_record = []
                         last_pin_state = GPIO.input(PINS.SENSOR)
                         start_time = time.time()
                         gui_update_time = time.time()
-                        current_state = 'TEST_ACTIVE'
+                        set_state(State.TEST_ACTIVE)
 
                     # --- Test active state.
-                    elif current_state == 'TEST_ACTIVE':
+                    elif current_state == State.TEST_ACTIVE:
                         if stop_flag.is_set(): continue
 
                         # --- Get last pin and time.
@@ -532,14 +572,14 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         if ((not is_calibrating and len(edge_record) >= PARAMS.TEST_TARGET_EDGES) or
                                 (is_calibrating and len(edge_record) >= PARAMS.CALIBRATION_TARGET_EDGES)):
                             logger.info(f'FSM: All edges detected')
-                            current_state = 'TEST_STOP'
+                            set_state(State.TEST_STOP)
                             continue
 
                         # --- Check timeout.
                         if ((not is_calibrating and (time.time() - start_time) > PARAMS.TEST_TIMEOUT_SEC) or
                                 (is_calibrating and (time.time() - gui_update_time) > PARAMS.CALIBRATION_TIMEOUT_SEC)):
                             logger.info('FSM: Test timed out')
-                            current_state = 'TEST_STOP'
+                            set_state(State.TEST_STOP)
 
                         # --- Update gui.
                         if (time.time() - gui_update_time) > PARAMS.GUI_UPDATE_TIMEOUT_SEC:
@@ -550,16 +590,20 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         time.sleep(PARAMS.POLL_DELAY_SEC)
 
                     # --- Test stop state.
-                    elif current_state == 'TEST_STOP':
+                    elif current_state == State.TEST_STOP:
                         gui_queue.put('de-energizing')
                         motor_driver.remove_power()
                         if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
                             source_controller.set_frequency(current_model.start_freq)
-                        current_state = 'TEST_ANALYZE'
+                        set_state(State.TEST_ANALYZE)
 
                     # --- Test analyze state.
-                    elif current_state == 'TEST_ANALYZE':
+                    elif current_state == State.TEST_ANALYZE:
                         gui_queue.put('analyzing')
+
+                        # --- Set tooling to far position:
+                        GPIO.output(PINS.TOOLING_NEAR_POS, GPIO.LOW)
+                        GPIO.output(PINS.TOOLING_FAR_POS, GPIO.HIGH)
 
                         # --- Get pass or fail result if not calibrating.
                         if not is_calibrating:
@@ -599,15 +643,15 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                             if stop_flag.wait(PARAMS.PASS_WAIT_SEC): continue
                             GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
 
-                        current_state = 'TEST_COMPLETE'
+                        set_state(State.TEST_COMPLETE)
 
                     # --- Test complete state.
-                    elif current_state == 'TEST_COMPLETE':
+                    elif current_state == State.TEST_COMPLETE:
                         test_in_progress = False
                         is_calibrating = False
 
                     # --- Test cancel state.
-                    elif current_state == 'TEST_CANCEL':
+                    elif current_state == State.TEST_CANCEL:
                         # --- Clean up motor driver.
                         if motor_driver: motor_driver.cleanup()
 
@@ -615,10 +659,13 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         gui_queue.put('cancelled:by_user')
 
                         # --- Reset outputs.
+                        GPIO.output(PINS.TOOLING_NEAR_POS, GPIO.LOW)
+                        GPIO.output(PINS.TOOLING_FAR_POS, GPIO.HIGH)
                         GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
                         GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
 
                         test_in_progress = False
+                        is_calibrating = False
 
             # --- Test exception handler.
             except Exception as e:
@@ -644,4 +691,4 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
 
 
 if __name__ == "__main__":
-    pass
+    logger.error(f'FSM: This module is not intended to be called directly.')

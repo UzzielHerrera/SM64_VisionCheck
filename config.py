@@ -4,10 +4,13 @@
 class PINS:
     """ BCM pins for the test gpio. """
     # --- Test stand pins.
-    START_SIGNAL = 22   # Input: pin to start the test
-    SENSOR = 10         # Input: pin for the edge laser sensor
-    BUSY_SIGNAL = 6     # Output: pin to show test is running
-    OK_SIGNAL = 13      # Output: pin for pass/fail result
+    START_SIGNAL = 22   # Input: pin to start the test.
+    SENSOR = 10         # Input: pin for the edge laser sensor.
+    BUSY_SIGNAL = 6     # Output: pin to show test is running.
+    OK_SIGNAL = 13      # Output: pin for pass/fail result.
+    TOOLING_DOWN = 9    # Input: pin for tooling down signal.
+    TOOLING_FAR_POS = 19    # Output: pin to move the tooling to far position.
+    TOOLING_NEAR_POS = 26   # Output: pin to move the tooling to near position.
 
     # --- AC motor driver pins.
     AC_RELAY = 23
