@@ -9,11 +9,11 @@ from models import MotorModel, ModelManager
 from test import finite_state_machine
 
 
-# Equipments information
+# --- Equipments information.
 equipment_name = 'TS111125'
 sw_version = 'v25.11.18'
 
-# Log handler setup
+# --- Log handler setup.
 logger = logging.getLogger('SpinCheck')
 if not logger.handlers:
     logger.setLevel(logging.DEBUG)
@@ -22,7 +22,7 @@ if not logger.handlers:
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-# Color constants
+# --- Color constants.
 pass_color = '#57da50'
 fail_color = '#ff3300'
 darker_fail_color = '#8B0000'
@@ -36,7 +36,7 @@ frame_bg_color = '#ffffff'
 text_color = '#333333'
 highlight_color = '#007acc'
 
-# Fonts constants
+# --- Fonts constants.
 title_font = ("Arial", 22, "bold")
 subtitle_font = ("Arial", 16)
 text_font = ("Arial", 12)
@@ -468,15 +468,17 @@ class GUI(Tk):
         Label(model_frame, text="--- Modelos ---", font=subtitle_font, bg=frame_bg_color).place(x=int(model_width/2), y=5, anchor='n')
 
         Label(model_frame, text="Modelo Actual:", bg=frame_bg_color, justify='center',
-                font=subtitle_font).place(x=int(model_width / 2), y=4 * inner_offset, anchor='n')
+                font=subtitle_font).place(x=int(model_width / 2), y=3 * inner_offset, anchor='n')
 
         self.lbl_current_model = Label(model_frame, text="* Sin Seleccionar *", bg=frame_bg_color, font=title_font,
                                         justify='center')
-        self.lbl_current_model.place(x=int(model_width / 2), y=6 * inner_offset, anchor='n')
+        self.lbl_current_model.place(x=int(model_width / 2), y=5 * inner_offset, anchor='n')
 
-        Button (model_frame, text='SELECCION DE MODELO', bg=highlight_color, fg=fail_text_color, font=subtitle_font,
-                width=24, height=2, command=self.open_model_manager).place(x=int(model_width/2), y=10 * inner_offset, anchor='n')
+        Button (model_frame, text='SELECCION DE MODELO', bg=highlight_color, fg=fail_text_color, font=text_font,
+                width=24, height=2, command=self.open_model_manager).place(x=int(model_width/2), y=8 * inner_offset, anchor='n')
 
+        Button(model_frame, text='CALIBRAR', bg=pass_color, fg=fail_text_color, font=text_font,
+                width=24, height=2, command=self.calibrate_model).place(x=int(model_width / 2), y=12 * inner_offset, anchor='n')
 
         # --- Status drawing section.
         status_frame = Frame(self, width=status_width, height=status_height, bg=frame_bg_color)
@@ -495,10 +497,10 @@ class GUI(Tk):
         self.info_label = Label(status_frame, text="Esperando modelo...", font=text_font, bg=frame_bg_color)
         self.info_label.place(x=int(status_width / 2), y=main_height - 3 *  inner_offset, anchor='s')
 
-        self.lbl_good_counter = Label(status_frame, text="Buenas: 0", font=subtitle_font, bg=frame_bg_color)
+        self.lbl_good_counter = Label(status_frame, text="Buenas: 0", font=text_font, bg=frame_bg_color)
         self.lbl_good_counter.place(x=offset, y= main_height - inner_offset, anchor='sw')
 
-        self.lbl_bad_counter = Label(status_frame, text="Malas: 0", font=subtitle_font, bg=frame_bg_color)
+        self.lbl_bad_counter = Label(status_frame, text="Malas: 0", font=text_font, bg=frame_bg_color)
         self.lbl_bad_counter.place(x=status_width - offset, y= main_height - inner_offset, anchor='se')
 
         # --- Controls drawing section.
@@ -537,6 +539,10 @@ class GUI(Tk):
     def open_model_manager(self):
         """ Opens the TopLevel Model Selector. """
         ModelSelector(self, self.model_manager, self.load_model_by_name)
+
+    def calibrate_model(self):
+        """ Set FSM to calibrate the current model. """
+        self.model_queue.put('cmd:calibration_enter')
 
     def load_model_by_name(self, name):
         """ Callback used by the ModelManager to load a model. """

@@ -12,6 +12,9 @@
 
 ### Changed
 * **Code Maintenance:** Standardized all inline code comments to the `# --- Comment.` format to ensure consistent style and improved readability throughout the file.
+* **Granular Tolerance Logic (`test.py`):** Refactored the calibration and analysis algorithms to support specific tolerance thresholds for each pulse type, replacing the single global tolerance approach.
+    * **Calibration:** `motor_calibrate` now calculates the maximum deviation independently for `Short`, `Medium`, and `Long` pulses. It returns a dictionary containing specific keys (`short_tolerance`, `medium_tolerance`, `long_tolerance`).
+    * **Analysis:** `motor_analyze` was updated to validate each measured pulse against its specific category's tolerance. This prevents false positives/negatives where mechanical variance differs between short and long pulses.
 
 ## V25.12.15
 ### Added
