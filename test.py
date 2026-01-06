@@ -239,13 +239,14 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
     :param fsm_queue: communication Queue that connects  GUI->FSM
     :return:
     """
-    logger.info('FSM: starting finite state machine')
+    logger.info('FSM: Start finite state machine')
     # --- FSM state variables
     current_model = initial_model
     current_state = State.MODEL_CHECK
     source_controller: PowerSource = None
     motor_driver: MotorDriver = None
     source_is_active = False
+    last_test_time = time.time()
 
     # --- Calibration variables.
     is_calibrating = False
@@ -313,7 +314,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
         # --- If different state, process change.
         if new_state != current_state:
             current_state = new_state
-            logger.info(f'FSM: {new_state.name}')
+            logger.debug(f'FSM: {new_state.name}')
 
     # --- GPIO config.
     current_rpi_mode = GPIO.getmode()
@@ -349,7 +350,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                 while test_in_progress:
                     # --- Emergency stop pressed.
                     if stop_flag.is_set():
-                        logger.info('FSM: stop flag active')
+                        logger.error('FSM: Stop flag active')
                         set_state(State.TEST_CANCEL)
 
                     # --- Manual Mode state.
@@ -371,7 +372,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                             # --- Check for command in the queue and handle it.
                             cmd = fsm_queue.get_nowait()
                             if cmd == 'cmd:manual_exit':
-                                logger.info('FSM: exiting manual mode')
+                                logger.info('FSM: Exiting manual mode')
                                 if motor_driver: motor_driver.remove_power()
                                 if source_controller: source_controller.disable_output()
                                 GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
@@ -381,7 +382,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                                 set_state(State.MODEL_CHECK)
                             elif isinstance(cmd, str) and cmd.startswith('manual:'):
                                 response = handle_manual_cmd(cmd, source_controller, motor_driver)
-                                logger.info(f'FSM: manual action {response}')
+                                logger.debug(f'FSM: Manual action {response}')
                         except Empty:
                             pass
 
@@ -394,9 +395,9 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         # --- Get new model from the queue.
                         try:
                             new_model = fsm_queue.get_nowait()
-                            logger.info(f'FSM: new model: {new_model}')
+                            logger.debug(f'FSM: new model: {new_model}')
                         except Empty:
-                            logger.info('FSM: model queue empty')
+                            logger.debug('FSM: model queue empty')
                             pass
 
                         # --- Check if model is a manual mode command.
@@ -416,7 +417,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         # --- Check if model has been changed.
                         if new_model != '0' and new_model != current_model:
                             if new_model is None:
-                                logger.info('FSM: shutting down finite state machine')
+                                logger.warning('FSM: shutting down finite state machine')
                                 return
 
                             # --- Driver cleanup.
@@ -489,15 +490,16 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                                 # --- Anti debounce check.
                                 if stop_flag.wait(PARAMS.DEBOUNCE_SEC): continue
                                 if GPIO.input(PINS.START_SIGNAL) == GPIO.HIGH:
-                                    logger.info(f'FSM: starting test')
+                                    logger.info(f'FSM: Start new test')
                                     GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
                                     set_state(State.TEST_INIT)
+                                    last_test_time = time.time()
                                     break
 
                             # --- Look up for model change.
                             try:
                                 if not fsm_queue.empty():
-                                    logger.info('FSM: new model received')
+                                    logger.debug('FSM: New model received')
                                     set_state(State.MODEL_CHECK)
                                     break
                             except:
@@ -558,14 +560,14 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         if current_pin_state != last_pin_state:
                             record = {'time': now, 'state': current_pin_state}
                             edge_record.append(record)
-                            logger.info(f'FSM: Edge {len(edge_record)}->({now},{current_pin_state})')
+                            logger.debug(f'FSM: Edge {len(edge_record)}->({now},{current_pin_state})')
 
                         last_pin_state = current_pin_state
 
                         # --- Check completion.
                         if ((not is_calibrating and len(edge_record) >= PARAMS.TEST_TARGET_EDGES) or
                                 (is_calibrating and len(edge_record) >= PARAMS.CALIBRATION_TARGET_EDGES)):
-                            logger.info(f'FSM: All edges detected')
+                            logger.debug(f'FSM: All edges detected')
                             set_state(State.TEST_STOP)
                             continue
 
@@ -643,6 +645,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                     elif current_state == State.TEST_COMPLETE:
                         test_in_progress = False
                         is_calibrating = False
+                        logger.info(f'FSM: Test duration: {time.time() - last_test_time}')
 
                     # --- Test cancel state.
                     elif current_state == State.TEST_CANCEL:
@@ -668,20 +671,18 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
 
             # --- Test finally cleanup.
             finally:
-                logger.info('FSM: finish test cleaning')
                 if motor_driver:
                     motor_driver.cleanup()
                 stop_flag.clear()
 
     # --- Thread level clean up.
     finally:
-        logger.info(f'FSM: cleanning up thread.')
         if motor_driver:
             motor_driver.cleanup()
         if source_controller:
             source_controller.cleanup()
         GPIO.cleanup()
-        logger.info('FSM: test thread ended.')
+        logger.warning('FSM: Test thread ended.')
 
 
 if __name__ == "__main__":
