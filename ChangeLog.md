@@ -1,5 +1,9 @@
 # SM64 Change Log
 
+## V26.01.08
+### Fix
+* **Tooling Actuator Adjustments:** Fixed a bug where tooling position would not show.
+
 ## V26.01.06
 ### Added
 * **Tooling Actuator Control:** Integrated GPIO logic for `TOOLING_NEAR_POS` and `TOOLING_FAR_POS` to automate test fixture engagement.

@@ -642,7 +642,7 @@ class GUI(Tk):
         if msg.startswith('manual_status'):
             try:
                 data = msg.split(':')[1]
-                start, sensor, busy, ok, src, drv, tool_down, tool_pos = data.split(',')
+                start, sensor, busy, ok, src, drv, tool_pos, tool_down = data.split(',')
                 if hasattr(self, 'manual_window') and self.manual_window.winfo_exists():
                     self.manual_window.update_manual(start, sensor, busy, ok, src, drv, tool_down, tool_pos)
             except Exception as e:
@@ -794,7 +794,6 @@ class GUI(Tk):
         except Exception:
             pass
         self.destroy()
-
 
 
 if __name__ == '__main__':

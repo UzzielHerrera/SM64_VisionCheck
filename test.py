@@ -336,6 +336,10 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
     GPIO.setup(PINS.BUSY_SIGNAL, GPIO.OUT)
     GPIO.setup(PINS.OK_SIGNAL, GPIO.OUT)
 
+    # --- Set tooling to far position:
+    GPIO.output(PINS.TOOLING_NEAR_POS, GPIO.LOW)
+    GPIO.output(PINS.TOOLING_FAR_POS, GPIO.HIGH)
+
 
     # --- Thread level setup and cleanup.
     try:
@@ -360,13 +364,13 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         sensor_value = GPIO.input(PINS.SENSOR)
                         busy_value = GPIO.input(PINS.BUSY_SIGNAL)
                         ok_value = GPIO.input(PINS.OK_SIGNAL)
-                        toolpos_value = GPIO.input(PINS.TOOLING_FAR_POS)
+                        tool_pos_value = GPIO.input(PINS.TOOLING_FAR_POS)
                         tooling_value = GPIO.input(PINS.TOOLING_DOWN)
 
                         scr_value = 1 if manual_source_active else 0
                         drv_value = 1 if manual_driver_active else 0
                         gui_queue.put(f'manual_status:{start_value}, {sensor_value}, {busy_value}, {ok_value},'
-                                        f' {scr_value}, {drv_value}, {toolpos_value}, {tooling_value}')
+                                        f' {scr_value}, {drv_value}, {tool_pos_value}, {tooling_value}')
 
                         try:
                             # --- Check for command in the queue and handle it.

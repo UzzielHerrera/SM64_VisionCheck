@@ -9,8 +9,8 @@ class PINS:
     BUSY_SIGNAL = 6     # Output: pin to show test is running.
     OK_SIGNAL = 13      # Output: pin for pass/fail result.
     TOOLING_DOWN = 9    # Input: pin for tooling down signal.
-    TOOLING_FAR_POS = 19    # Output: pin to move the tooling to far position.
-    TOOLING_NEAR_POS = 26   # Output: pin to move the tooling to near position.
+    TOOLING_FAR_POS = 26    # Output: pin to move the tooling to far position. Mutex use with TOOLING_NEAR_POS
+    TOOLING_NEAR_POS = 19   # Output: pin to move the tooling to near position. Mutex use with TOOLING_FAR_POS
 
     # --- AC motor driver pins.
     AC_RELAY = 23
