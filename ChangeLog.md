@@ -1,7 +1,7 @@
 # SM64 Change Log
 
 ## V26.01.08
-### Fix
+### Fixed
 * **Tooling Actuator Adjustments:** Fixed a bug where tooling position would not show.
 
 ## V26.01.06
