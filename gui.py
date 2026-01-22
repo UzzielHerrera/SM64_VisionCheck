@@ -458,7 +458,7 @@ class GUI(Tk):
             logger.info(f'Running from terminal')
             self['width'] = screen_width
             self['height'] = screen_height
-            self.after(250, self.__force_fullscreen)
+            # self.after(250, self.__force_fullscreen)
 
         # --- Header drawing section.
         header_frame = Frame(self, width=header_width, height=header_height, bg=frame_bg_color)

@@ -1,5 +1,14 @@
 # SM64 Change Log
 
+## V26.01.22
+### Changed
+* **Calibration Pulse Processing (`motor_calibrate`):** Enhanced the pulse extraction logic to handle data arrays more robustly.
+    * **Modulo Truncation:** Implemented a filter to strictly process complete triplets. Any trailing pulses that do not form a full cycle (remainder of len % 3) are now automatically discarded instead of causing the calibration to fail.
+    * **Dynamic Iteration:** Replaced the hardcoded loop limit (12) with a dynamic range, allowing the system to process as many complete cycles as defined by `CALIBRATION_TARGET_PULSES` without index errors.
+* **Tooling Actuator Timing(`test.py`):** Optimized the test sequence by shifting the tooling engagement (`TOOLING_NEAR_POS`) earlier in the process.
+  * The tooling now engages during the `TEST_INIT` state, specifically after 25% of the `MOTOR_STABILIZE_TIME` delay has elapsed.
+  * This ensures the fixture is fully secured before the AC frequency ramp (`TEST_RAMP_SETUP`) begins, rather than waiting for the ramp to complete.
+
 ## V26.01.08
 ### Fixed
 * **Tooling Actuator Adjustments:** Fixed a bug where tooling position would not show.

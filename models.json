@@ -118,12 +118,12 @@
         "end_freq": 150.0,
         "delta_t": 1.0,
         "calibration_table": {
-            "long": 1.492,
-            "medium": 0.88,
-            "short": 0.88,
-            "long_tolerance": 0.39,
-            "medium_tolerance": 0.39,
-            "short_tolerance": 0.39
+            "long": 1.852,
+            "medium": 1.237,
+            "short": 0.626,
+            "long_tolerance": 0.10,
+            "medium_tolerance": 0.15,
+            "short_tolerance": 0.20
         }
     }
 }

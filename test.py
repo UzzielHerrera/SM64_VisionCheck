@@ -78,8 +78,8 @@ def motor_analyze(edge_record, calibration_table):
         log_record = {'long': sorted_times[2], 'medium': sorted_times[1], 'short': sorted_times[0]}
 
         # --- Start index detection.
-        sequence_names = ['short', 'medium', 'long']
-        # sequence_name = ['long', 'medium', 'short'] # <--- Note: Uncomment this for CCW, but motor mustn't run CCW
+        # sequence_names = ['short', 'medium', 'long']
+        sequence_names = ['long', 'medium', 'short'] # <--- Note: Uncomment this for CCW, but motor mustn't run CCW
         nominal_times = [calibration_table[x] for x in sequence_names]
         tolerances = [calibration_table[f'{x}_tolerance'] for x in sequence_names]
 
@@ -146,12 +146,24 @@ def motor_calibrate(edge_record):
             return null_calibration
         logger.debug(f'FSM: Extacted times: {[f"{t:0.3f}" for t in analysis_times]}')
 
-        if len(analysis_times) != PARAMS.CALIBRATION_TARGET_PULSES:
+        # --- Trim until PARAMS.CALIBRATION_TARGET_PULSES
+        if len(analysis_times) > PARAMS.CALIBRATION_TARGET_PULSES:
+            analysis_times = analysis_times[:PARAMS.CALIBRATION_TARGET_PULSES]
+
+        # --- Truncate in triplets.
+        remainder = len(analysis_times) % 3
+        if remainder > 0:
+            logger.warning(f'FSM: Remainder of calibration table: {remainder}')
+            analysis_times = analysis_times[:-remainder]
+
+        # --- Check minimum `analysis_times`.
+        if len(analysis_times) < 3:
+            logger.error('FSM: Not enough calibration table')
             return null_calibration
 
         # --- Divide and sort in groups of pulses.
         cycles = []
-        for i in range(0, 12, 3):
+        for i in range(0, len(analysis_times), 3):
             cycle_group = analysis_times[i:i+3]
             cycles.append(sorted(cycle_group))
 
@@ -355,6 +367,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                     # --- Emergency stop pressed.
                     if stop_flag.is_set():
                         logger.error('FSM: Stop flag active')
+                        stop_flag.clear()
                         set_state(State.TEST_CANCEL)
 
                     # --- Manual Mode state.
@@ -413,6 +426,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                             set_state(State.MANUAL_MODE)
                             continue
 
+                        # --- Check if model is a calibration mode command.
                         if isinstance(new_model, str) and new_model == 'cmd:calibration_enter':
                             logger.info('FSM: entering Calibration mode')
                             is_calibrating = True
@@ -522,13 +536,19 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
 
                         # --- Turn on relay / h-bridge.
                         motor_driver.apply_power()
+                        if stop_flag.wait(PARAMS.MOTOR_STABILIZE_SEC * 0.25): continue
 
-                        if stop_flag.wait(PARAMS.MOTOR_STABILIZE_SEC): continue
+                        # --- Set tooling to near position.
+                        logger.debug('FSM: Setting tool to near position.')
+                        GPIO.output(PINS.TOOLING_FAR_POS, GPIO.LOW)
+                        GPIO.output(PINS.TOOLING_NEAR_POS, GPIO.HIGH)
+
+                        if stop_flag.wait(PARAMS.MOTOR_STABILIZE_SEC * 0.75): continue
 
                         # --- AC power source ramp setup.
-                        if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
-                            set_state(State.TEST_RAMP_SETUP)
-                            continue
+                        # if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
+                        #     set_state(State.TEST_RAMP_SETUP)
+                        #     continue
 
                         # --- DC power source test preset.
                         set_state(State.TEST_PRESET)
@@ -541,10 +561,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
 
                     # --- Test variable pre-set.
                     elif current_state == State.TEST_PRESET:
-                        # --- Set tooling to near position.
-                        GPIO.output(PINS.TOOLING_FAR_POS, GPIO.LOW)
-                        GPIO.output(PINS.TOOLING_NEAR_POS, GPIO.HIGH)
-
                         # --- Polling prepare.
                         edge_record = []
                         last_pin_state = GPIO.input(PINS.SENSOR)
@@ -656,14 +672,19 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         # --- Clean up motor driver.
                         if motor_driver: motor_driver.cleanup()
 
+                        # --- Reset to start frequency if ACSource
+                        if isinstance(source_controller, ACSource):
+                            source_controller.set_frequency(current_model.start_freq)
+
                         logger.warning(f'FSM: test cancelled by user')
                         gui_queue.put('cancelled:by_user')
 
                         # --- Reset outputs.
                         GPIO.output(PINS.TOOLING_NEAR_POS, GPIO.LOW)
                         GPIO.output(PINS.TOOLING_FAR_POS, GPIO.HIGH)
+                        GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
+                        if stop_flag.wait(PARAMS.PASS_WAIT_SEC): continue
                         GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
-                        GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
 
                         test_in_progress = False
                         is_calibrating = False
@@ -677,7 +698,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
             finally:
                 if motor_driver:
                     motor_driver.cleanup()
-                stop_flag.clear()
 
     # --- Thread level clean up.
     finally:
