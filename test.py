@@ -3,6 +3,7 @@ import csv
 import time
 import logging
 from enum import IntEnum
+from typing import Optional
 from datetime import datetime
 from queue import Queue, Empty
 from threading import Event
@@ -255,8 +256,8 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
     # --- FSM state variables
     current_model = initial_model
     current_state = State.MODEL_CHECK
-    source_controller: PowerSource = None
-    motor_driver: MotorDriver = None
+    source_controller: Optional[PowerSource] = None
+    motor_driver: Optional[MotorDriver] = None
     source_is_active = False
     last_test_time = time.time()
 
@@ -512,6 +513,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                                     GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
                                     set_state(State.TEST_INIT)
                                     last_test_time = time.time()
+                                    start_time = time.time()
                                     break
 
                             # --- Look up for model change.
@@ -536,19 +538,18 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
 
                         # --- Turn on relay / h-bridge.
                         motor_driver.apply_power()
-                        if stop_flag.wait(PARAMS.MOTOR_STABILIZE_SEC * 0.25): continue
 
                         # --- Set tooling to near position.
                         logger.debug('FSM: Setting tool to near position.')
                         GPIO.output(PINS.TOOLING_FAR_POS, GPIO.LOW)
                         GPIO.output(PINS.TOOLING_NEAR_POS, GPIO.HIGH)
 
-                        if stop_flag.wait(PARAMS.MOTOR_STABILIZE_SEC * 0.75): continue
+                        if stop_flag.wait(PARAMS.MOTOR_STABILIZE_SEC): continue
 
                         # --- AC power source ramp setup.
-                        # if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
-                        #     set_state(State.TEST_RAMP_SETUP)
-                        #     continue
+                        if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
+                            set_state(State.TEST_RAMP_SETUP)
+                            continue
 
                         # --- DC power source test preset.
                         set_state(State.TEST_PRESET)
@@ -564,7 +565,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         # --- Polling prepare.
                         edge_record = []
                         last_pin_state = GPIO.input(PINS.SENSOR)
-                        start_time = time.time()
                         gui_update_time = time.time()
                         set_state(State.TEST_ACTIVE)
 

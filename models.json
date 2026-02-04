@@ -115,14 +115,14 @@
         "voltage": 24.0,
         "max_current": 0.25,
         "start_freq": 60.0,
-        "end_freq": 150.0,
+        "end_freq": 120.0,
         "delta_t": 1.0,
         "calibration_table": {
-            "long": 1.852,
-            "medium": 1.237,
-            "short": 0.626,
-            "long_tolerance": 0.10,
-            "medium_tolerance": 0.15,
+            "long": 1.49,
+            "medium": 1.168,
+            "short": 0.799,
+            "long_tolerance": 0.12,
+            "medium_tolerance": 0.13,
             "short_tolerance": 0.20
         }
     }

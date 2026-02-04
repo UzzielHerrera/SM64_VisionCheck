@@ -1,5 +1,11 @@
 # SM64 Change Log
 
+## V26.02.04
+### Deprecated
+* **Physical Sensor Logic:** The current FSM and HAL implementations relying on physical contact sensors (`GPIO` edge detection) are deprecated and will no longer be maintained.
+    * **Reason:** Unresolvable mechanical reliability issues in the test fixture.
+    * **Future Work:** Development will shift towards a non-contact **Computer Vision** system to validate motor rotation and speed.
+
 ## V26.01.22
 ### Changed
 * **Calibration Pulse Processing (`motor_calibrate`):** Enhanced the pulse extraction logic to handle data arrays more robustly.

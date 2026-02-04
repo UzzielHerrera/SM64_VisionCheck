@@ -31,11 +31,11 @@ class PORTS:
 class PARAMS:
     """ Parameters that define the test execution. """
     # --- Test and calibration parameters.
-    TEST_TARGET_EDGES = 7
-    CALIBRATION_TARGET_EDGES = 25
     TEST_TARGET_PULSES = 3
-    CALIBRATION_TARGET_PULSES = 12
-    TEST_TIMEOUT_SEC = 9.7
+    CALIBRATION_TARGET_PULSES = TEST_TARGET_PULSES * 5
+    TEST_TARGET_EDGES = (TEST_TARGET_PULSES * 2) + 1
+    CALIBRATION_TARGET_EDGES = (CALIBRATION_TARGET_PULSES * 2) + 1
+    TEST_TIMEOUT_SEC = 9.85
     CALIBRATION_TIMEOUT_SEC = 35.0
 
     # --- PSU parameters.
@@ -43,7 +43,7 @@ class PARAMS:
     PSU_RAMP_STEPS = 10
 
     # --- Wait times (in seconds).
-    MOTOR_STABILIZE_SEC = 2.0
+    MOTOR_STABILIZE_SEC = 1.5
     MOTOR_RAMP_STEPS = 10
     GUI_UPDATE_TIMEOUT_SEC = 0.300
     YIELD_DELAY_SEC = 0.05
