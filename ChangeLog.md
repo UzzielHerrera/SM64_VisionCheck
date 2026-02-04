@@ -1,6 +1,9 @@
 # SM64 Change Log
 
-## V26.02.04
+## V26.02.04 (Architecture Change)
+### Added
+* Historical placeholder entry marking the start of internal development of the **Computer Vision** system firmware.
+
 ### Deprecated
 * **Physical Sensor Logic:** The current FSM and HAL implementations relying on physical contact sensors (`GPIO` edge detection) are deprecated and will no longer be maintained.
     * **Reason:** Unresolvable mechanical reliability issues in the test fixture.
