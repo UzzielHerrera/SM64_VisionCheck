@@ -1,5 +1,12 @@
 # SM64 Change Log
 
+## V26.02.05
+### Added
+* **Computer Vision Module (`vision.py`):** Introduced a standalone prototype for non-contact rotation detection using OpenCV.
+    * **Algorithm:** Implements Lucas-Kanade Optical Flow to track the linear movement of worm gear threads and determine rotation direction (CW/CCW).
+    * **Robust Tracking:** Features a dynamic Point Management System that automatically culls tracking points reaching the ROI edges and respawns new features to maintain continuous flow detection.
+    * **Status:** Currently serves as a development placeholder and testing ground for vision logic before integration into the main FSM.
+
 ## V26.02.04 (Architecture Change)
 ### Added
 * Historical placeholder entry marking the start of internal development of the **Computer Vision** system firmware.
