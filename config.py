@@ -31,12 +31,7 @@ class PORTS:
 class PARAMS:
     """ Parameters that define the test execution. """
     # --- Test and calibration parameters.
-    TEST_TARGET_PULSES = 3
-    CALIBRATION_TARGET_PULSES = TEST_TARGET_PULSES * 5
-    TEST_TARGET_EDGES = (TEST_TARGET_PULSES * 2) + 1
-    CALIBRATION_TARGET_EDGES = (CALIBRATION_TARGET_PULSES * 2) + 1
     TEST_TIMEOUT_SEC = 9.85
-    CALIBRATION_TIMEOUT_SEC = 35.0
 
     # --- PSU parameters.
     PSU_STABILIZE_SEC = 1.5
@@ -52,6 +47,3 @@ class PARAMS:
     BUSY_DELAY_SEC = 0.1
     PASS_WAIT_SEC = 0.1
     DEBOUNCE_SEC = 0.010
-
-    # --- Analysis.
-    TOLERANCE_OFFSET = 0.05

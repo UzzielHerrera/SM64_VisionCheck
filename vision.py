@@ -1,251 +1,327 @@
-import os
 import cv2
+import numpy as np
 import time
 import json
-import numpy as np
+import threading
+import os
+import logging
 
-
+# --- Log handler setup.
+logger = logging.getLogger('SpinCheck')
 CONFIG_FILE = "vision_config.json"
 
-def save_rois(rotation_roi, runout_roi):
-    """
-    Guarda las coordenadas de las ROI en un JSON.
-    Format: [x, y, w, h]
-    """
-    data = {
-        "rotation_roi": rotation_roi,  # Tupla o lista (x, y, w, h)
-        "runout_roi": runout_roi  # Tupla o lista (x, y, w, h)
-    }
-    try:
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(data, f, indent=4)
-        print(f"Configuración guardada en {CONFIG_FILE}")
+
+class VisionSystem:
+    def __init__(self):
+        self.cap = None
+        self.streaming = False
+        self.thread = None
+        self.lock = threading.Lock()
+
+        self.latest_frame = None
+        self.show_debug_points = True  # Poner en False para producción
+
+        # Variables lógicas
+        self.last_stable_state = "STOPPED"
+        self.state_stable_start = 0
+        self.direction_buffer = []
+        self.reset_tracking_flag = False
+
+        # Variables de Test
+        self.test_active = False
+        self.test_result = None
+        self.test_start_time = 0
+
+        # Configuración
+        self.rot_roi = None
+        self.runout_rois = []
+        self.feature_params = dict(maxCorners=200, qualityLevel=0.3, minDistance=5, blockSize=7)
+        self.lk_params = dict(winSize=(21, 21), maxLevel=3,
+                              criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
+
+        self.load_config()
+
+    def load_config(self):
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, 'r') as f:
+                    data = json.load(f)
+                    if data.get("rotation_roi"):
+                        self.rot_roi = tuple(data.get("rotation_roi"))
+                    self.runout_rois = [tuple(r) for r in data.get("runout_rois", [])]
+            except Exception:
+                pass
+
+    def save_config(self, rot_roi, runout_rois):
+        data = {"rotation_roi": rot_roi, "runout_rois": runout_rois}
+        try:
+            with open(CONFIG_FILE, 'w') as f:
+                json.dump(data, f, indent=4)
+            self.rot_roi = rot_roi
+            self.runout_rois = runout_rois
+            return True
+        except Exception:
+            return False
+
+    def start_stream(self):
+        if self.cap is None:
+            # --- CORRECCIÓN 1: Usar la misma configuración que la versión 1 (sin V4L2 forzado)
+            # Si esto te da error de GStreamer, usa CAP_V4L2 pero RE-CALIBRA las ROIs.
+            self.cap = cv2.VideoCapture(0)
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+        if not self.streaming:
+            self.streaming = True
+            self.thread = threading.Thread(target=self._processing_loop, daemon=True)
+            self.thread.start()
+
+    def stop_stream(self):
+        self.streaming = False
+        if self.thread: self.thread.join(timeout=1.0)
+        if self.cap:
+            self.cap.release()
+            self.cap = None
+
+    def start_test(self):
+        if not self.rot_roi: return False
+        with self.lock:
+            self.test_result = None
+            self.test_start_time = time.time()
+            self.last_stable_state = 'STOPPED'
+            self.state_stable_start = 0
+            self.direction_buffer = []
+            self.reset_tracking_flag = True
+            self.test_active = True
         return True
-    except Exception as e:
-        print(f"Error guardando configuración: {e}")
-        return False
 
+    def get_result(self):
+        return self.test_result
 
-def load_rois():
-    """
-    Carga las coordenadas desde el JSON.
-    Retorna: (rotation_roi, runout_roi) o (None, None) si falla.
-    """
-    if not os.path.exists(CONFIG_FILE):
-        print("No se encontró archivo de calibración.")
-        return None, None
+    def get_frame_for_gui(self):
+        with self.lock:
+            if self.latest_frame is None: return None
+            return self.latest_frame.copy()
 
-    try:
-        with open(CONFIG_FILE, 'r') as f:
-            data = json.load(f)
-        return data["rotation_roi"], data["runout_roi"]
-    except Exception as e:
-        print(f"Error cargando configuración: {e}")
-        return None, None
+    def _processing_loop(self):
+        p0 = None
+        old_gray = None
+        REQUIRED_DURATION = 3.0
+        TIMEOUT_TIME = 7.0
 
+        while self.streaming:
+            if self.cap is None: break
+            ret, frame = self.cap.read()
+            if not ret:
+                time.sleep(0.01)
+                continue
 
-def calibrate_vision_system():
-    cap = cv2.VideoCapture(0)
+            # --- DIBUJAR EN MEMORIA ---
+            if self.rot_roi:
+                # Definimos vx, vy aquí para dibujar
+                dx, dy, dw, dh = self.rot_roi
+                cv2.rectangle(frame, (int(dx), int(dy)), (int(dx + dw), int(dy + dh)), (0, 255, 0), 2)
 
-    # Esperar un poco a que la cámara ajuste la exposición
-    time.sleep(1.0)
-
-    ret, frame = cap.read()
-    if not ret:
-        print("Error: No se pudo acceder a la cámara")
-        return False
-
-    print("--- CALIBRACIÓN ---")
-
-    # 1. Seleccionar Zona de Giro (Verde)
-    print("Paso 1: Dibuja la zona de GIRO (Verde) y pulsa ENTER")
-    r_rot = cv2.selectROI("Calibracion - Rotation Zone", frame, fromCenter=False, showCrosshair=True)
-    cv2.destroyWindow("Calibracion - Rotation Zone")
-
-    # Validación simple
-    if r_rot[2] == 0 or r_rot[3] == 0:
-        print("Selección inválida. Cancelando.")
-        return False
-
-    # 2. Seleccionar Zona de Runout (Roja)
-    print("Paso 2: Dibuja la zona de RUNOUT (Roja) y pulsa ENTER")
-    # Dibujamos la verde para referencia
-    temp_frame = frame.copy()
-    cv2.rectangle(temp_frame, (int(r_rot[0]), int(r_rot[1])),
-                  (int(r_rot[0] + r_rot[2]), int(r_rot[1] + r_rot[3])), (0, 255, 0), 2)
-
-    r_run = cv2.selectROI("Calibracion - Runout Zone", temp_frame, fromCenter=False, showCrosshair=True)
-    cv2.destroyWindow("Calibracion - Runout Zone")
-
-    # Guardar en JSON
-    # r_rot y r_run son tuplas (x, y, w, h)
-    success = save_rois(r_rot, r_run)
-
-    cap.release()
-    return success
-
-
-def run_vision_test():
-    # 1. Cargar Configuración
-    rot_roi, run_roi = load_rois()
-    if rot_roi is None:
-        return "ERROR_NO_CALIBRATION"
-
-    # Desempaquetar coordenadas (Valid=Green, Bad=Red)
-    vx, vy, vw, vh = rot_roi
-    bx, by, bw, bh = run_roi
-
-    cap = cv2.VideoCapture(0)
-
-    # Parámetros Lucas-Kanade
-    feature_params = dict(maxCorners=200, qualityLevel=0.3, minDistance=5, blockSize=7)
-    lk_params = dict(winSize=(21, 21), maxLevel=3,
-                     criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
-
-    ret, old_frame = cap.read()
-    if not ret: return "CAMERA_ERROR"
-
-    old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
-
-    # --- MÁSCARA AUTOMÁTICA ---
-    mask = np.zeros_like(old_gray)
-    mask[int(vy):int(vy + vh), int(vx):int(vx + vw)] = 255
-
-    # Restar zona de runout de la máscara de búsqueda inicial
-    if bw > 0 and bh > 0:
-        mask[int(by):int(by + bh), int(bx):int(bx + bw)] = 0
-
-    p0 = cv2.goodFeaturesToTrack(old_gray, mask=mask, **feature_params)
-
-    # Variables de lógica
-    direction_buffer = []
-    BUFFER_SIZE = 10
-    last_stable_state = "STOPPED"
-    state_start_time = time.time()
-    REQUIRED_DURATION = 3.0
-    final_result = "TIMEOUT"
-
-    MAX_TEST_DURATION = 10.0
-    global_start_time = time.time()
-
-    while (time.time() - global_start_time) < MAX_TEST_DURATION:
-        ret, frame = cap.read()
-        if not ret: break
-
-        frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-        if p0 is None or len(p0) == 0:
-            p0 = cv2.goodFeaturesToTrack(old_gray, mask=mask, **feature_params)
-            old_gray = frame_gray.copy()
-            continue
-
-        p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **lk_params)
-
-        smoothed_dx = 0
-
-        if p1 is not None:
-            good_new = p1[st == 1]
-            good_old = p0[st == 1]
-            dx_list = []
-            puntos_validos = []
-            MARGEN = 5
-
-            runout_detected = False
-
-            for new, old in zip(good_new, good_old):
-                a, b = new.ravel()
-                c, d = old.ravel()
-
-                # --- CHECK RUNOUT ---
-                if bw > 0 and bh > 0:
-                    if (a > bx) and (a < bx + bw) and (b > by) and (b < by + bh):
-                        runout_detected = True
-                        # Dibujar en ROJO GRUESO el punto que causó la falla para evidencia
-                        cv2.circle(frame, (int(a), int(b)), 8, (0, 0, 255), -1)
-                        break
-
-                        # --- CHECK SALIDA DE ZONA VERDE ---
-                in_valid_box = (a > vx + MARGEN) and (a < vx + vw - MARGEN) and \
-                               (b > vy + MARGEN) and (b < vy + vh - MARGEN)
-
-                if in_valid_box:
-                    dx_list.append(a - c)
-                    puntos_validos.append(new)
-
-                    # --- OPCIONAL: Puntos de Rastreo ---
-                    # Descomenta la siguiente linea si quieres ver los puntos verdes moviendose
-                    cv2.circle(frame, (int(a), int(b)), 2, (0, 255, 0), -1)
-
-            if runout_detected:
-                print("FAIL: Runout Detected")
-                cv2.putText(frame, "FAIL: RUNOUT", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
-
-                # Dibujamos las cajas una ultima vez antes de congelar
-                cv2.rectangle(frame, (int(vx), int(vy)), (int(vx + vw), int(vy + vh)), (0, 255, 0), 2)
-                if bw > 0 and bh > 0:
+            for r in self.runout_rois:
+                bx, by, bw, bh = r
+                if bw > 0:
                     cv2.rectangle(frame, (int(bx), int(by)), (int(bx + bw), int(by + bh)), (0, 0, 255), 2)
 
-                cv2.imshow("Vision Test Running", frame)
-                cv2.waitKey(2000)  # Mostrar error por 2 segundos
-                cap.release()
-                return "FAIL_RUNOUT"
+            # --- LÓGICA DE DETECCIÓN ---
+            if self.test_active and self.rot_roi:
+                # --- CORRECCIÓN 2: Desempaquetar variables AQUÍ dentro para asegurar alcance ---
+                vx, vy, vw, vh = self.rot_roi
 
-            if dx_list:
-                direction_buffer.append(np.mean(dx_list))
-                if len(direction_buffer) > BUFFER_SIZE: direction_buffer.pop(0)
+                # Limpieza forzada
+                if self.reset_tracking_flag:
+                    p0 = None
+                    old_gray = None
+                    self.reset_tracking_flag = False
 
-            smoothed_dx = np.mean(direction_buffer) if direction_buffer else 0
+                # Timeout
+                if (time.time() - self.test_start_time) > TIMEOUT_TIME:
+                    self.test_result = "TIMEOUT"
+                    self.test_active = False
 
-            # Repoblar
-            p0 = np.array(puntos_validos).reshape(-1, 1, 2)
-            if len(puntos_validos) < 50:
-                p_nuevos = cv2.goodFeaturesToTrack(old_gray, mask=mask, **feature_params)
-                if p_nuevos is not None:
-                    p0 = np.vstack((p0, p_nuevos)) if len(p0) > 0 else p_nuevos
+                frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-            old_gray = frame_gray.copy()
+                # Inicializar puntos
+                if p0 is None:
+                    mask = np.zeros_like(frame_gray)
+                    # Asegurar enteros para la máscara
+                    mask[int(vy):int(vy + vh), int(vx):int(vx + vw)] = 255
 
-        # --- DIBUJAR INTERFAZ ESTÁTICA (Siempre visible) ---
-        # 1. Caja Verde (Zona OK)
-        cv2.rectangle(frame, (int(vx), int(vy)), (int(vx + vw), int(vy + vh)), (0, 255, 0), 2)
+                    # Restar runout
+                    for r in self.runout_rois:
+                        bx, by, bw, bh = r
+                        if bw > 0: mask[int(by):int(by + bh), int(bx):int(bx + bw)] = 0
 
-        # 2. Caja Roja (Zona Runout) - Si existe
-        if bw > 0 and bh > 0:
-            cv2.rectangle(frame, (int(bx), int(by)), (int(bx + bw), int(by + bh)), (0, 0, 255), 2)
+                    p0 = cv2.goodFeaturesToTrack(frame_gray, mask=mask, **self.feature_params)
+                    old_gray = frame_gray.copy()
 
-        # --- Lógica de Estado ---
-        UMBRAL = 0.3
-        current_state = "STOPPED"
-        if smoothed_dx > UMBRAL:
-            current_state = "RIGHT"
-        elif smoothed_dx < -UMBRAL:
-            current_state = "LEFT"
+                    # DEBUG: Verificar si encontró puntos
+                    if p0 is None:
+                        # Si entra aquí, la máscara está mal puesta o la cámara muy oscura
+                        logger.debug("VISION DEBUG: No se encontraron puntos iniciales (Revisar Iluminación/ROI)")
 
-        # Mostrar Estado en texto (sin barra de progreso)
-        cv2.putText(frame, f"Giro: {current_state}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+                # Lucas-Kanade
+                if p0 is not None and len(p0) > 0:
+                    p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **self.lk_params)
 
-        if current_state == last_stable_state and current_state != "STOPPED":
-            elapsed_time = time.time() - state_start_time
+                    if p1 is not None:
+                        good_new = p1[st == 1]
+                        good_old = p0[st == 1]
+                        dx_list = []
+                        valid_points = []
+                        runout_detected = False
 
-            # Ya no dibujamos barra, solo chequeamos el tiempo
-            if elapsed_time >= REQUIRED_DURATION:
-                final_result = current_state
-                break
-        else:
-            if current_state != last_stable_state:
-                last_stable_state = current_state
-                state_start_time = time.time()
+                        for new, old in zip(good_new, good_old):
+                            a, b = new.ravel()
+                            c, d = old.ravel()
 
-        # --- DISPLAY ---
-        cv2.imshow("Vision Test Running", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            final_result = "CANCELLED"
-            break
+                            # Check Runout
+                            for r in self.runout_rois:
+                                bx, by, bw, bh = r
+                                if bw > 0 and (bx < a < bx + bw) and (by < b < by + bh):
+                                    runout_detected = True
+                                    cv2.circle(frame, (int(a), int(b)), 8, (0, 0, 255), -1)
+                                    break
+                            if runout_detected: break
 
-    cap.release()
-    cv2.destroyAllWindows()
-    return final_result
+                            # Check Green Box (usando las variables locales seguras)
+                            if (vx < a < vx + vw) and (vy < b < vy + vh):
+                                dx_list.append(a - c)
+                                valid_points.append(new)
+                                if self.show_debug_points:
+                                    cv2.circle(frame, (int(a), int(b)), 3, (0, 204, 255), -1)
+
+                        if runout_detected:
+                            self.test_result = "FAIL_RUNOUT"
+                            self.test_active = False
+                            cv2.putText(frame, "FAIL: RUNOUT", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
+                        else:
+                            if dx_list:
+                                self.direction_buffer.append(np.mean(dx_list))
+                                if len(self.direction_buffer) > 10: self.direction_buffer.pop(0)
+
+                            smoothed_dx = np.mean(self.direction_buffer) if self.direction_buffer else 0
+
+                            # Repoblar puntos
+                            p0 = np.array(valid_points).reshape(-1, 1, 2)
+                            if len(valid_points) < 50:
+                                p_new = cv2.goodFeaturesToTrack(frame_gray, mask=mask, **self.feature_params)
+                                if p_new is not None:
+                                    p0 = np.vstack((p0, p_new)) if len(p0) > 0 else p_new
+
+                            old_gray = frame_gray.copy()
+
+                            current_state = "STOPPED"
+                            if smoothed_dx > 0.3:
+                                current_state = "RIGHT"
+                            elif smoothed_dx < -0.3:
+                                current_state = "LEFT"
+
+                            cv2.putText(frame, f"Giro: {current_state}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                                        (255, 255, 0), 2)
+
+                            if current_state == self.last_stable_state and current_state != "STOPPED":
+                                if (time.time() - self.state_stable_start) >= REQUIRED_DURATION:
+                                    self.test_result = current_state
+                                    self.test_active = False
+                            else:
+                                if current_state != self.last_stable_state:
+                                    self.last_stable_state = current_state
+                                    self.state_stable_start = time.time()
+            else:
+                if p0 is not None:
+                    p0 = None
+                    old_gray = None
+
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            with self.lock:
+                self.latest_frame = frame_rgb
+
+    def calibrate_gui_safe(self):
+        """
+        Abre ventanas de OpenCV para seleccionar ROIs.
+        DEBE ser llamada desde el Hilo Principal (donde corre Tkinter).
+        Bloquea la ejecución momentáneamente hasta que el usuario termina.
+        """
+        # 1. Obtener una "foto" estática del momento actual
+        frame_bgr = None
+        with self.lock:
+            if self.latest_frame is None:
+                logger.error("VISION: No hay imagen de cámara disponible para calibrar.")
+                return False
+            # IMPORTANTE: La GUI tiene la imagen en RGB, OpenCV necesita BGR
+            frame_bgr = cv2.cvtColor(self.latest_frame, cv2.COLOR_RGB2BGR)
+
+        window_name = "Calibracion - SpinCheck"
+        logger.info("--- INICIO CALIBRACION ---")
+
+        try:
+            # --- PASO 1: ZONA VERDE (GIRO) ---
+            logger.info(">> Paso 1: Selecciona el SINFÍN (Verde) y presiona ESPACIO o ENTER.")
+            # selectROI bloquea hasta que el usuario confirma
+            r_rot = cv2.selectROI(window_name, frame_bgr, showCrosshair=True, fromCenter=False)
+
+            # Validar si el usuario canceló (width o height es 0)
+            if r_rot[2] == 0 or r_rot[3] == 0:
+                logger.warning("VISION: Calibración cancelada por el usuario.")
+                cv2.destroyWindow(window_name)
+                cv2.waitKey(1)
+                return False
+
+            # Dibujar referencia verde en una imagen temporal
+            # Esto ayuda al usuario a ver dónde poner las rojas respecto a la verde
+            temp_img = frame_bgr.copy()
+            cv2.rectangle(temp_img, (int(r_rot[0]), int(r_rot[1])),
+                          (int(r_rot[0] + r_rot[2]), int(r_rot[1] + r_rot[3])), (0, 255, 0), 2)
+
+            # --- PASO 2: ZONA ROJA 1 (RUNOUT ARRIBA) ---
+            logger.info(">> Paso 2: Selecciona RUNOUT SUPERIOR (Rojo 1) y presiona ESPACIO o ENTER.")
+            # Si el usuario quiere omitir, puede presionar 'c' o Enter sin seleccionar nada
+            r_run1 = cv2.selectROI(window_name, temp_img, showCrosshair=True, fromCenter=False)
+
+            # Dibujar referencia roja 1
+            if r_run1[2] > 0 and r_run1[3] > 0:
+                cv2.rectangle(temp_img, (int(r_run1[0]), int(r_run1[1])),
+                              (int(r_run1[0] + r_run1[2]), int(r_run1[1] + r_run1[3])), (0, 0, 255), 2)
+
+            # --- PASO 3: ZONA ROJA 2 (RUNOUT ABAJO) ---
+            logger.info(">> Paso 3: Selecciona RUNOUT INFERIOR (Rojo 2) y presiona ESPACIO o ENTER.")
+            r_run2 = cv2.selectROI(window_name, temp_img, showCrosshair=True, fromCenter=False)
+
+            # --- CIERRE Y GUARDADO ---
+            cv2.destroyWindow(window_name)
+            cv2.waitKey(1)  # Vital en Linux para procesar el cierre de la ventana
+
+            # Armar la lista de runouts validos
+            runout_list = []
+            if r_run1[2] > 0: runout_list.append(r_run1)
+            if r_run2[2] > 0: runout_list.append(r_run2)
+
+            # Guardar usando tu función existente
+            success = self.save_config(r_rot, runout_list)
+
+            if success:
+                logger.info(f"VISION: Calibración exitosa. {len(runout_list)} zonas de runout guardadas.")
+                # Actualizar variables internas inmediatamente
+                self.rot_roi = r_rot
+                self.runout_rois = runout_list
+
+            return success
+
+        except Exception as e:
+            logger.error(f"VISION ERROR CRÍTICO durante calibración: {e}")
+            try:
+                cv2.destroyWindow(window_name)
+                cv2.waitKey(1)
+            except:
+                pass
+            return False
+
+
+vision_system = VisionSystem()
 
 if __name__ == "__main__":
-    # calibrate_vision_system()
-    print(run_vision_test())
+    logger.error(f'{__name__} module is not tended to be imported')

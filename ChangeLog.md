@@ -1,5 +1,24 @@
 # SM64 Change Log
 
+## V26.02.16
+### Added
+* **VisionSystem Class:** Implemented a modular, object-oriented class in `vision.py` to handle all computer vision tasks.
+* **Background Processing:** Image capture and mathematical analysis (Lucas-Kanade optical flow) now run in a dedicated background daemon thread to prevent UI freezing.
+* **Thread-Safe GUI Rendering:** Introduced a producer-consumer model using a thread-locked `latest_frame` variable. The Tkinter GUI now polls this variable to render the video feed, eliminating `cv2.imshow` threading conflicts.
+* **Interactive ROI Calibration:** Added a visual calibration routine allowing the user to graphically select the Rotation Zone (Green) and Runout Zones (Red) directly from the live video feed.
+* **Direction Attribute:** Added a direction field (string: 'CW' or 'CCW') in `models.py`. This attribute serves as the ground truth to validate the optical flow detection results against the expected product rotation.
+
+## Changed
+* **FSM Integration:** Refactored the `TEST_ACTIVE` state in the Finite State Machine (`test.py`). It now utilizes a non-blocking "Trigger & Poll" pattern to initiate the vision test and asynchronously check for results (`PASS`, `FAIL`, or `TIMEOUT`).
+* **Calibration Workflow:** Replaced the previous logic-based calibration with the new interactive visual ROI selection method on `gui.py`.
+
+## Removed
+* **Legacy Calibration Logic:** Removed calibration procedures from the `TEST_ANALYZE` state in `test.py` as hardware encoder calibration is no longer required.
+* **Legacy Encoder Functions:** Deleted `motor_analyze` and `motor_calibrate` functions from `test.py`.
+* **Hardware Dependencies:** Removed all logic related to reading physical GPIO pins for encoders, fully migrating the system to software-based optical flow detection.
+* **Calibration Model:** Removed the Calibration table from `models.py` as the legacy hardware encoder calibration is no longer required.
+* **Obsolete Configuration Parameters:** Removed `TEST_TARGET_EDGES`, `TEST_TARGET_PULSES`, `CALIBRATION_TARGET_EDGES`, `CALIBRATION_TARGET_PULSES`, and `CALIBRATION_TIMEOUT` from `config.py` as they are no longer used by the new vision system.
+
 ## V26.02.05
 ### Added
 * **Computer Vision Module (`vision.py`):** Introduced a standalone prototype for non-contact rotation detection using OpenCV.

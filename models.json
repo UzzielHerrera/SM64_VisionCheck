@@ -7,7 +7,7 @@
         "start_freq": 60.0,
         "end_freq": 120.0,
         "delta_t": 1.0,
-        "calibration_table": []
+        "direction": "CW"
     },
     "156400342": {
         "name": "156400342",
@@ -17,7 +17,7 @@
         "start_freq": 50.0,
         "end_freq": 120.0,
         "delta_t": 1.0,
-        "calibration_table": []
+        "direction": "CW"
     },
     "156400352": {
         "name": "156400352",
@@ -27,7 +27,7 @@
         "start_freq": 60.0,
         "end_freq": 120.0,
         "delta_t": 1.0,
-        "calibration_table": []
+        "direction": "CW"
     },
     "156400402": {
         "name": "156400402",
@@ -37,7 +37,7 @@
         "start_freq": 50.0,
         "end_freq": 120.0,
         "delta_t": 1.0,
-        "calibration_table": []
+        "direction": "CW"
     },
     "156400412": {
         "name": "156400412",
@@ -47,7 +47,7 @@
         "start_freq": 60.0,
         "end_freq": 120.0,
         "delta_t": 1.0,
-        "calibration_table": []
+        "direction": "CW"
     },
     "156400432": {
         "name": "156400432",
@@ -57,7 +57,7 @@
         "start_freq": 60.0,
         "end_freq": 120.0,
         "delta_t": 1.0,
-        "calibration_table": []
+        "direction": "CW"
     },
     "156400442": {
         "name": "156400442",
@@ -67,7 +67,7 @@
         "start_freq": 60.0,
         "end_freq": 120.0,
         "delta_t": 1.0,
-        "calibration_table": []
+        "direction": "CW"
     },
     "156400452": {
         "name": "156400452",
@@ -77,7 +77,7 @@
         "start_freq": 60.0,
         "end_freq": 120.0,
         "delta_t": 1.0,
-        "calibration_table": []
+        "direction": "CW"
     },
     "156400462": {
         "name": "156400462",
@@ -87,7 +87,7 @@
         "start_freq": 50.0,
         "end_freq": 120.0,
         "delta_t": 1.0,
-        "calibration_table": []
+        "direction": "CW"
     },
     "156400472": {
         "name": "156400472",
@@ -97,7 +97,7 @@
         "start_freq": 60.0,
         "end_freq": 120.0,
         "delta_t": 1.0,
-        "calibration_table": []
+        "direction": "CW"
     },
     "156400542": {
         "name": "156400542",
@@ -107,7 +107,7 @@
         "start_freq": 60.0,
         "end_freq": 120.0,
         "delta_t": 1.0,
-        "calibration_table": []
+        "direction": "CW"
     },
     "ACDUMMY": {
         "name": "ACDUMMY",
@@ -117,13 +117,6 @@
         "start_freq": 60.0,
         "end_freq": 120.0,
         "delta_t": 1.0,
-        "calibration_table": {
-            "long": 1.49,
-            "medium": 1.168,
-            "short": 0.799,
-            "long_tolerance": 0.12,
-            "medium_tolerance": 0.13,
-            "short_tolerance": 0.20
-        }
+        "direction": "CW"
     }
 }

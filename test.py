@@ -8,6 +8,7 @@ from datetime import datetime
 from queue import Queue, Empty
 from threading import Event
 from models import MotorModel
+from vision import vision_system
 from config import PINS, PORTS, PARAMS
 from powersupply import PowerSource, ACSource, BK9801, BK9201
 from motordriver import MotorDriver, ACDriver, DCDriver
@@ -53,163 +54,7 @@ class State(IntEnum):
     TEST_COMPLETE = 12
     TEST_CANCEL = 13
 
-def motor_analyze(edge_record, calibration_table):
-    """
-    Analysis edge record data to give a pass/fail status.
-    :param edge_record: list of 'PARAMS.TEST_TARGET_EDGES' number of edge dicts [{'time': float, 'state': int}, ...]
-    :param calibration_table: calibration table dict {'long': float, 'medium': float, 'short': float, 'short_tolerance': float, 'medium_tolerance': float, 'long_tolerance': float}
-    :return: tuple of dict ({'status': 'PASS'|'FAIL', 'reason': str}, {'long': float, 'medium': float, 'short': float})
-    """
-    null_record = {'long': 0.0, 'medium': 0.0, 'short': 0.0}
-    try:
-
-        # --- Safe record length.
-        if len(edge_record) != PARAMS.TEST_TARGET_EDGES:
-            return {'status': 'FAIL', 'reason': 'Invalid edge count'}, null_record
-
-        # --- Extract pulse duration.
-        analysis_times = [nxt['time'] - cur['time'] for cur, nxt in zip(edge_record, edge_record[1:]) if cur['state']]
-        logger.info(f'FSM: Extracted times: {[f"{t:0.3f}" for t in analysis_times]}')
-
-        if len(analysis_times) != PARAMS.TEST_TARGET_PULSES:
-            return {'status': 'FAIL', 'reason': 'No edges found'}, null_record
-
-        # --- Sort pulses for logging.
-        sorted_times = sorted(analysis_times)
-        log_record = {'long': sorted_times[2], 'medium': sorted_times[1], 'short': sorted_times[0]}
-
-        # --- Start index detection.
-        # sequence_names = ['short', 'medium', 'long']
-        sequence_names = ['long', 'medium', 'short'] # <--- Note: Uncomment this for CCW, but motor mustn't run CCW
-        nominal_times = [calibration_table[x] for x in sequence_names]
-        tolerances = [calibration_table[f'{x}_tolerance'] for x in sequence_names]
-
-        start_index = -1
-        first_delta = analysis_times[0]
-
-        for i, nominal_time in enumerate(nominal_times):
-            current_tolerance = tolerances[i]
-            lower_limit = nominal_time * (1 - current_tolerance)
-            upper_limit = nominal_time * (1 + current_tolerance)
-            if lower_limit <= first_delta <= upper_limit:
-                start_index = i
-                logger.warning(f'FSM: {start_index} -> {nominal_time}')
-                break
-
-        if start_index == -1:
-            return {'status': 'FAIL', 'reason': f'First data "{first_delta:0.2f}" out of range'}, log_record
-
-        # --- Validate Full Sequence.
-        current_sequence_index = start_index
-
-        for i, measured_time in enumerate(analysis_times):
-            expected_type = sequence_names[current_sequence_index]
-            nominal_time = nominal_times[current_sequence_index]
-            current_tolerance = tolerances[current_sequence_index]
-
-            lower_limit = nominal_time * (1 - current_tolerance)
-            upper_limit = nominal_time * (1 + current_tolerance)
-
-            logger.warning(f'FSM: {lower_limit:0.3f} -> {measured_time:0.3f} -> {upper_limit:0.3f}')
-
-            if measured_time < lower_limit:
-                return {'status': 'FAIL', 'reason': f'Fast motor in segment {expected_type} (Value: {measured_time:0.2f})'}, log_record
-
-            if measured_time > upper_limit:
-                return {'status': 'FAIL', 'reason': f'Slow motor in segment {expected_type} (Value: {measured_time:0.2f})'}, log_record
-
-            current_sequence_index = (current_sequence_index + 1) % len(sequence_names)
-
-        return {'status': 'PASS', 'reason': 'Sequence and timing correct'}, log_record
-    except Exception as e:
-        logger.error(f'FSM: {e}')
-        return {'status': 'FAIL', 'reason': str(e)}, null_record
-
-def motor_calibrate(edge_record):
-    """
-    Analysis edge record data to give a calibration table with individual tolerances.
-    :param edge_record: list of 'PARAMS.CALIBRATION_TARGET_EDGES' number of edge dicts [{'time': float, 'state': int}, ...]
-    :return: calibration table as dict {'long': float, 'medium': float, 'short': float, 'long_tolerance': float, 'medium_tolerance': float, 'short_tolerance': float}
-    """
-    # --- Empty calibration.
-    null_calibration = {'long': 0.0, 'medium': 0.0, 'short': 0.0,
-                        'short_tolerance': 0.0, 'medium_tolerance': 0.0, 'long_tolerance': 0.0}
-    logger.info(f'FSM: Motor calibrating -> {edge_record}')
-    try:
-
-        # --- Safe record length.
-        if len(edge_record) != PARAMS.CALIBRATION_TARGET_EDGES:
-            return null_calibration
-
-        # --- Extract pulse duration.
-        analysis_times = [nxt['time'] - cur['time'] for cur, nxt in zip(edge_record, edge_record[1:]) if cur['state']]
-        if not analysis_times:
-            return null_calibration
-        logger.debug(f'FSM: Extacted times: {[f"{t:0.3f}" for t in analysis_times]}')
-
-        # --- Trim until PARAMS.CALIBRATION_TARGET_PULSES
-        if len(analysis_times) > PARAMS.CALIBRATION_TARGET_PULSES:
-            analysis_times = analysis_times[:PARAMS.CALIBRATION_TARGET_PULSES]
-
-        # --- Truncate in triplets.
-        remainder = len(analysis_times) % 3
-        if remainder > 0:
-            logger.warning(f'FSM: Remainder of calibration table: {remainder}')
-            analysis_times = analysis_times[:-remainder]
-
-        # --- Check minimum `analysis_times`.
-        if len(analysis_times) < 3:
-            logger.error('FSM: Not enough calibration table')
-            return null_calibration
-
-        # --- Divide and sort in groups of pulses.
-        cycles = []
-        for i in range(0, len(analysis_times), 3):
-            cycle_group = analysis_times[i:i+3]
-            cycles.append(sorted(cycle_group))
-
-        # --- Separate in category.
-        short_values = [c[0] for c in cycles]
-        medium_values = [c[1] for c in cycles]
-        long_values = [c[2] for c in cycles]
-
-        # --- Calculate mean values.
-        short_avg = sum(short_values) / len(short_values)
-        medium_avg = sum(medium_values) / len(medium_values)
-        long_avg = sum(long_values) / len(long_values)
-
-        # --- Calculate max deviation.
-        def get_max_deviation(values, average):
-            max_dev = 0.0
-            for val in values:
-                deviation = abs(val - average) / average
-                if deviation > max_dev: max_dev = deviation
-            return max_dev
-
-        short_max_deviation = get_max_deviation(short_values, short_avg)
-        medium_max_deviation = get_max_deviation(medium_values, medium_avg)
-        long_max_deviation = get_max_deviation(long_values, long_avg)
-
-        # --- Create pulses deviation.
-        short_tolerance = short_max_deviation + PARAMS.TOLERANCE_OFFSET
-        medium_tolerance = medium_max_deviation + PARAMS.TOLERANCE_OFFSET
-        long_tolerance = long_max_deviation + PARAMS.TOLERANCE_OFFSET
-
-        # --- Return calibration table.
-        return {
-            'long': float(f'{long_avg:0.3f}'),
-            'medium': float(f'{medium_avg:0.3f}'),
-            'short': float(f'{short_avg:0.3f}'),
-            'long_tolerance': float(f'{long_tolerance:0.2f}'),
-            'medium_tolerance': float(f'{medium_tolerance:0.2f}'),
-            'short_tolerance': float(f'{short_tolerance:0.2f}')
-        }
-
-    except Exception as e:
-        logger.error(f'FSM: {e}')
-        return null_calibration
-
-def log_test_results(model_name, status, reason, metrics):
+def log_test_results(model_name, status, reason):
     try:
         # --- Create folder container.
         log_dir = 'logs'
@@ -220,7 +65,7 @@ def log_test_results(model_name, status, reason, metrics):
         file_exists = os.path.isfile(filename)
 
         with open(filename, 'a', newline='') as csvfile:
-            headers = ['Timestamp', 'Model', 'Status', 'Reason', 'Short_Record', 'Medium_Record', 'Long_Record']
+            headers = ['Timestamp', 'Model', 'Status', 'Reason']
             writer = csv.DictWriter(csvfile, fieldnames=headers)
 
             # --- Create headers if file is written for the first time.
@@ -232,10 +77,7 @@ def log_test_results(model_name, status, reason, metrics):
                 'Timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 'Model': model_name,
                 'Status': status,
-                'Reason': reason,
-                'Short_Record': f'{metrics.get("short", 0):0.3f}',
-                'Medium_Record': f'{metrics.get("medium", 0):0.3f}',
-                'Long_Record': f'{metrics.get("long", 0):0.3f}'
+                'Reason': reason
             })
 
         logger.info(f'LOG: "{filename}" updated')
@@ -261,14 +103,10 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
     source_is_active = False
     last_test_time = time.time()
 
-    # --- Calibration variables.
-    is_calibrating = False
-
     # --- Recording variables.
-    edge_record = []
-    last_pin_state = None
     start_time = time.time()
-    gui_update_time = time.time()
+    vision_results = None
+    test_case_trigger: bool= False
 
     # --- Manual mode variables.
     manual_source_active = False
@@ -427,18 +265,12 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                             set_state(State.MANUAL_MODE)
                             continue
 
-                        # --- Check if model is a calibration mode command.
-                        if isinstance(new_model, str) and new_model == 'cmd:calibration_enter':
-                            logger.info('FSM: entering Calibration mode')
-                            is_calibrating = True
+                        if isinstance(new_model, str) and new_model == 'cmd:test':
+                            test_case_trigger = True
                             continue
 
                         # --- Check if model has been changed.
-                        if new_model != '0' and new_model != current_model:
-                            if new_model is None:
-                                logger.warning('FSM: shutting down finite state machine')
-                                return
-
+                        if isinstance(new_model, MotorModel) and new_model != current_model:
                             # --- Driver cleanup.
                             if source_controller is not None: source_controller.cleanup()
                             if motor_driver is not None: motor_driver.cleanup()
@@ -450,6 +282,10 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                             source_controller = None
                             motor_driver = None
                             source_is_active = False
+
+                        if new_model is None:
+                            logger.warning('FSM: shutting down finite state machine')
+                            return
 
                         if not source_is_active:
                             set_state(State.MODEL_LOAD)
@@ -505,11 +341,12 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         while not stop_flag.is_set():
 
                             # --- Look up for start signal.
-                            if GPIO.input(PINS.START_SIGNAL) == GPIO.HIGH:
+                            if GPIO.input(PINS.START_SIGNAL) == GPIO.HIGH or test_case_trigger:
                                 # --- Anti debounce check.
                                 if stop_flag.wait(PARAMS.DEBOUNCE_SEC): continue
-                                if GPIO.input(PINS.START_SIGNAL) == GPIO.HIGH:
+                                if GPIO.input(PINS.START_SIGNAL) == GPIO.HIGH or test_case_trigger:
                                     logger.info(f'FSM: Start new test')
+                                    test_case_trigger = False
                                     GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
                                     set_state(State.TEST_INIT)
                                     last_test_time = time.time()
@@ -528,8 +365,8 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                             # --- MPU yield delay.
                             time.sleep(PARAMS.YIELD_DELAY_SEC)
 
-                        # --- Reset loop to handle model change or stop flag.
-                        if current_state != State.TEST_INIT: continue
+                        # --- Reset loop to handle state change.
+                        continue
 
                     # --- Test init state.
                     elif current_state == State.TEST_INIT:
@@ -547,11 +384,11 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         if stop_flag.wait(PARAMS.MOTOR_STABILIZE_SEC): continue
 
                         # --- AC power source ramp setup.
-                        if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
-                            set_state(State.TEST_RAMP_SETUP)
-                            continue
+                        # if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
+                        #     set_state(State.TEST_RAMP_SETUP)
+                        #     continue
 
-                        # --- DC power source test preset.
+                        # --- Power source test preset.
                         set_state(State.TEST_PRESET)
 
                     # --- Test Power Source Ramp.
@@ -563,98 +400,91 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                     # --- Test variable pre-set.
                     elif current_state == State.TEST_PRESET:
                         # --- Polling prepare.
-                        edge_record = []
-                        last_pin_state = GPIO.input(PINS.SENSOR)
-                        gui_update_time = time.time()
+                        if not vision_system.start_test():
+                            logger.warning('FSM: No vision system calibrated.')
+                            gui_queue.put('error:no_calibration')
+                            set_state(State.TEST_CANCEL)
                         set_state(State.TEST_ACTIVE)
 
                     # --- Test active state.
                     elif current_state == State.TEST_ACTIVE:
                         if stop_flag.is_set(): continue
 
-                        # --- Get last pin and time.
-                        current_pin_state = GPIO.input(PINS.SENSOR)
-                        now = time.perf_counter()
+                        # --- Poll vision system results.
+                        vision_results = vision_system.get_result()
 
-                        # --- Edge detection.
-                        if current_pin_state != last_pin_state:
-                            record = {'time': now, 'state': current_pin_state}
-                            edge_record.append(record)
-                            logger.debug(f'FSM: Edge {len(edge_record)}->({now},{current_pin_state})')
-
-                        last_pin_state = current_pin_state
-
-                        # --- Check completion.
-                        if ((not is_calibrating and len(edge_record) >= PARAMS.TEST_TARGET_EDGES) or
-                                (is_calibrating and len(edge_record) >= PARAMS.CALIBRATION_TARGET_EDGES)):
-                            logger.debug(f'FSM: All edges detected')
+                        if vision_results is not None:
+                            logger.info(f'FSM: Vision results: {vision_results}')
                             set_state(State.TEST_STOP)
-                            continue
 
                         # --- Check timeout.
-                        if ((not is_calibrating and (time.time() - start_time) > PARAMS.TEST_TIMEOUT_SEC) or
-                                (is_calibrating and (time.time() - gui_update_time) > PARAMS.CALIBRATION_TIMEOUT_SEC)):
+                        if (time.time() - start_time) > PARAMS.TEST_TIMEOUT_SEC:
                             logger.info('FSM: Test timed out')
                             set_state(State.TEST_STOP)
-
-                        # --- Update gui.
-                        if (time.time() - gui_update_time) > PARAMS.GUI_UPDATE_TIMEOUT_SEC:
-                            gui_queue.put(f'record:{len(edge_record)}>{current_pin_state}')
-                            gui_update_time = time.time()
 
                         # --- MPU yield delay.
                         time.sleep(PARAMS.POLL_DELAY_SEC)
 
                     # --- Test stop state.
                     elif current_state == State.TEST_STOP:
+                        # --- Remove energy to uap.
                         gui_queue.put('de-energizing')
                         motor_driver.remove_power()
                         if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
                             source_controller.set_frequency(current_model.start_freq)
+
+                        # --- Set tooling to far position:
+                        GPIO.output(PINS.TOOLING_NEAR_POS, GPIO.LOW)
+                        GPIO.output(PINS.TOOLING_FAR_POS, GPIO.HIGH)
                         set_state(State.TEST_ANALYZE)
 
                     # --- Test analyze state.
                     elif current_state == State.TEST_ANALYZE:
                         gui_queue.put('analyzing')
+                        results = {'status': 'FAIL', 'reason': 'Camera analyzing'}
 
-                        # --- Set tooling to far position:
-                        GPIO.output(PINS.TOOLING_NEAR_POS, GPIO.LOW)
-                        GPIO.output(PINS.TOOLING_FAR_POS, GPIO.HIGH)
+                        # --- Decision logic.
+                        if vision_results == 'FAIL_RUNOUT':
+                            results = {'status': 'FAIL', 'reason': 'Runout detected'}
 
-                        # --- Get pass or fail result if not calibrating.
-                        if not is_calibrating:
-                            results, records = motor_analyze(edge_record, current_model.calibration_table)
+                        elif vision_results == 'TIMEOUT':
+                            results = {'status': 'FAIL', 'reason': 'Camera timeout'}
 
-                            # --- Log to results.
-                            log_test_results(
-                                model_name=current_model.name,
-                                status=results['status'],
-                                reason=results['reason'],
-                                metrics=records,
-                            )
-
-                            # --- Pass handling.
-                            if results['status'] == 'PASS':
-                                logger.info(f'FSM: Test results: {results['status']}')
-                                gui_queue.put('passed')
-                                GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
-                                if stop_flag.wait(PARAMS.PASS_WAIT_SEC): continue
-                                GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
-
-                            # --- Fail handling.
+                        elif vision_results == 'RIGHT':
+                            if current_model.direction.upper() == 'CW':
+                                results = {'status': 'PASS', 'reason': 'Good motor'}
                             else:
-                                logger.info(f'FSM: Test results: {results['status']} reason: {results['reason']}')
-                                gui_queue.put('failed')
-                                # GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
-                                GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
-                                if stop_flag.wait(PARAMS.PASS_WAIT_SEC): continue
-                                GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
+                                results = {'status': 'FAIL', 'reason': 'Invalid direction'}
 
-                        # --- Save calibration data to model if calibrating.
-                        if is_calibrating:
-                            calibration_data = motor_calibrate(edge_record)
-                            logger.info(f'FSM: Calibration results: "{calibration_data}"')
-                            gui_queue.put(('calibrated', calibration_data))
+                        elif vision_results == 'LEFT':
+                            if current_model.direction.upper() == 'CCW':
+                                results = {'status': 'PASS', 'reason': 'Good motor'}
+                            else:
+                                results = {'status': 'FAIL', 'reason': 'Invalid direction'}
+
+                        else:
+                            results = {'status': 'FAIL', 'reason': 'Camera failed'}
+
+                        # --- Log to results.
+                        log_test_results(
+                            model_name=current_model.name,
+                            status=results['status'],
+                            reason=results['reason']
+                        )
+
+                        # --- Pass handling.
+                        if results['status'] == 'PASS':
+                            logger.info(f'FSM: Test results: {results['status']}')
+                            gui_queue.put('passed')
+                            GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
+                            if stop_flag.wait(PARAMS.PASS_WAIT_SEC): continue
+                            GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
+
+                        # --- Fail handling.
+                        else:
+                            logger.info(f'FSM: Test results: {results['status']} reason: {results['reason']}')
+                            gui_queue.put('failed')
+                            # GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
                             GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
                             if stop_flag.wait(PARAMS.PASS_WAIT_SEC): continue
                             GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
@@ -664,7 +494,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                     # --- Test complete state.
                     elif current_state == State.TEST_COMPLETE:
                         test_in_progress = False
-                        is_calibrating = False
                         logger.info(f'FSM: Test duration: {time.time() - last_test_time}')
 
                     # --- Test cancel state.
@@ -687,7 +516,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
 
                         test_in_progress = False
-                        is_calibrating = False
 
             # --- Test exception handler.
             except Exception as e:

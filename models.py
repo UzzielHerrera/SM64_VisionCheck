@@ -2,13 +2,12 @@ import json
 import os
 import logging
 
-# --- Log handler setup
+# --- Log handler setup/
 logger = logging.getLogger('SpinCheck')
 
 class MotorModel:
     """ MotorModel class """
-    def __init__(self, name, motor_type, voltage, max_current=0.0, start_freq=0.0, end_freq=0.0, delta_t = 0.0,
-                    calibration_table = None):
+    def __init__(self, name, motor_type, voltage, max_current=0.0, start_freq=0.0, end_freq=0.0, delta_t = 0.0, direction='CW'):
         self.name = name
         self.motor_type = motor_type
         self.voltage = voltage
@@ -16,17 +15,13 @@ class MotorModel:
         self.start_freq = start_freq
         self.end_freq = end_freq
         self.delta_t = delta_t
-
-        if calibration_table is None:
-            self.calibration_table = {'long': 0.0, 'medium': 0.0, 'short': 0.0}
-        else:
-            self.calibration_table = calibration_table
+        self.direction = direction
 
     def __repr__(self):
         # --- Overwrite string representation
         return (f"<MotorModel name='{self.name}' type='{self.motor_type}' "
                 f"V={self.voltage} A={self.max_current} Start_Hz={self.start_freq} End_Hz={self.end_freq} dT={self.delta_t}"
-                f"Calibration_Table={self.calibration_table}>")
+                f"Direction={self.direction}>")
 
 class ModelManager:
     """ ModelManager class """

@@ -2,11 +2,14 @@ import queue
 from functools import partial
 from tkinter import *
 from tkinter import ttk, messagebox
+from PIL import Image, ImageTk
+from vision import vision_system
 import os
 import threading
 import logging
 from models import MotorModel, ModelManager
 from test import finite_state_machine
+
 
 
 # --- Equipments information.
@@ -522,9 +525,28 @@ class GUI(Tk):
         self.btn_stop.bind('<ButtonPress-1>', self.on_stop_btn_press)
         self.btn_stop.bind('<ButtonRelease-1>', self.on_stop_btn_release)
 
+        self.video_label = Label(self, text="Loading camera...", bg= ready_text_color)
+        self.video_label.place(x=0, y=0, anchor='nw')
+        vision_system.start_stream()
+        self.update_video_feed()
+
         Button(control_frame, text='MANUAL', bg=highlight_color, fg=fail_text_color,
                 font=subtitle_font, width=11, height=2,
                 command=self.open_manual_mode).place(x=model_width-inner_offset, y=3 * inner_offset, anchor='ne')
+
+    def update_video_feed(self):
+        frame_rgb = vision_system.get_frame_for_gui()
+
+        if frame_rgb is not None:
+            img_pil = Image.fromarray(frame_rgb)
+            img_pil = img_pil.resize((320, 240))
+            img_tk = ImageTk.PhotoImage(img_pil)
+
+            self.video_label.img_tk = img_tk
+            self.video_label.config(image=img_tk)
+
+        self.after(30, self.update_video_feed)
+
 
     # --- Logic methods.
     def open_manual_mode(self):
@@ -547,7 +569,14 @@ class GUI(Tk):
 
     def calibrate_model(self):
         """ Set FSM to calibrate the current model. """
-        self.model_queue.put('cmd:calibration_enter')
+        # self.model_queue.put('cmd:calibration_enter')
+        success = vision_system.calibrate_gui_safe()
+
+        # 2. Feedback visual (opcional)
+        if success:
+            print("GUI: Calibration complete.")
+        else:
+            print("GUI: Calibración failed or cancelled.")
 
     def load_model_by_name(self, name):
         """ Callback used by the ModelManager to load a model. """
@@ -772,6 +801,9 @@ class GUI(Tk):
     def on_close(self):
         """ Handles closing the GUI. """
         logger.warning('GUI: initializing application shutdown')
+
+        # --- Stop camera stream.
+        vision_system.stop_stream()
 
         # --- Inject venom pill to threads that trigger shutdown.
         self.gui_running = False
