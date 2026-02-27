@@ -11,10 +11,9 @@ from models import MotorModel, ModelManager
 from test import finite_state_machine
 
 
-
 # --- Equipments information.
 equipment_name = 'TS111125'
-sw_version = 'v26.01.06'
+sw_version = 'v26.02.26'
 
 # --- Logger handler setup.
 logger = logging.getLogger('SpinCheck')
@@ -50,7 +49,7 @@ class ModelCreator(Toplevel):
         super().__init__(parent)
 
         # --- Setup.
-        self.title(f'{equipment_name}_{sw_version}->ModelCreator')
+        self.title(f'{equipment_name}_{sw_version}_ModelCreator')
 
         # --- Fullscreen inherit.
         if parent.attributes('-fullscreen'):
@@ -136,7 +135,7 @@ class ModelCreator(Toplevel):
 class ModelSelector(Toplevel):
     def __init__(self, parent, manager, on_select_callback):
         super().__init__(parent)
-        self.title(f'{equipment_name}_{sw_version}->ModelSelector')
+        self.title(f'{equipment_name}_{sw_version}_ModelSelector')
         self.manager = manager
         self.on_select_callback = on_select_callback
 
@@ -264,7 +263,7 @@ class ModelSelector(Toplevel):
 class ManualController(Toplevel):
     def __init__(self, parent, send_command_callback, current_model_name, model_type):
         super().__init__(parent)
-        self.title(f'{equipment_name}_{sw_version}->ManualControl:{current_model_name},{model_type}')
+        self.title(f'{equipment_name}_{sw_version}_ManualControl:{current_model_name},{model_type}')
         self.send_command = send_command_callback
         self['bg'] = root_bg_color
         self.protocol('WM_DELETE_WINDOW', self.close_manual_mode)
@@ -350,7 +349,7 @@ class ManualController(Toplevel):
         btn.place(x=x, y=y, anchor='n')
         return btn
 
-    def update_manual(self, start, sensor, busy, ok, src_on, drv_on, tool_down, tool_pos):
+    def update_manual(self, start, sensor, busy, ok, src_on, drv_on, tool_down):
         """ Update manual mode color indicators for inputs and outputs. """
         # --- Update inputs.
         self.led_start[0].itemconfig(self.led_start[1], fill=pass_color if int(start) else fail_color)
@@ -366,8 +365,6 @@ class ManualController(Toplevel):
         self.btn_source['activebackground'] = pass_color if int(src_on) else disable_color
         self.btn_driver['bg'] = pass_color if int(drv_on) else disable_color
         self.btn_driver['activebackground'] = pass_color if int(drv_on) else disable_color
-        self.btn_tooling['bg'] = pass_color if int(tool_pos) else disable_color
-        self.btn_tooling['activebackground'] = pass_color if int(tool_pos) else disable_color
 
     def __force_fullscreen(self):
         """ Force fullscreen mode. """
@@ -444,12 +441,12 @@ class GUI(Tk):
         inner_offset = 15
         state_offset = 4 * inner_offset
         state_width = status_width - 2 * state_offset
-        state_height = state_width
+        state_height = state_offset
 
         command_height = status_height - offset - model_height
 
         # --- Main windows settings.
-        self.title(f'{equipment_name}_{sw_version}->AutomaticTest')
+        self.title(f'{equipment_name}_{sw_version}_AutomaticTest')
         self['bg'] = root_bg_color
 
         if os.environ.get('SSH_CLIENT') or os.environ.get('SSH_TTY'):
@@ -492,24 +489,24 @@ class GUI(Tk):
         status_frame = Frame(self, width=status_width, height=status_height, bg=frame_bg_color)
         status_frame.place(x=screen_width - offset, y=main_y, anchor='ne')
 
-        Label(status_frame, text="--- Estado ---", font=subtitle_font,
-                bg=frame_bg_color).place(x=int(model_width / 2), y=5, anchor='n')
+        # Label(status_frame, text="--- Estado ---", font=subtitle_font,
+        #         bg=frame_bg_color).place(x=int(model_width / 2), y=5, anchor='n')
 
         self.state_frame = Frame(status_frame, width=state_width, height=state_height, bg=disable_color)
-        self.state_frame.place(x=state_offset, y=4 * inner_offset, anchor='nw')
+        self.state_frame.place(x=int(status_width / 2), y=main_height - 8 *  inner_offset, anchor='n')
 
         self.status_label = Label(self.state_frame, text="CARGANDO", font=title_font,
-                                    bg=disable_color, fg=disable_text_color, height=3, justify='center')
-        self.status_label.place(x = int(state_width / 2), y = 5 * inner_offset, anchor='n')
+                                    bg=disable_color, fg=disable_text_color, height=1, justify='center')
+        self.status_label.place(x = int(state_width / 2), y=inner_offset, anchor='n')
 
         self.info_label = Label(status_frame, text="Esperando modelo...", font=text_font, bg=frame_bg_color)
-        self.info_label.place(x=int(status_width / 2), y=main_height - 3 *  inner_offset, anchor='s')
+        self.info_label.place(x=int(status_width / 2), y=main_height - 2 *  inner_offset, anchor='s')
 
         self.lbl_good_counter = Label(status_frame, text="Buenas: 0", font=text_font, bg=frame_bg_color)
-        self.lbl_good_counter.place(x=offset, y= main_height - inner_offset, anchor='sw')
+        self.lbl_good_counter.place(x=offset, y= main_height, anchor='sw')
 
         self.lbl_bad_counter = Label(status_frame, text="Malas: 0", font=text_font, bg=frame_bg_color)
-        self.lbl_bad_counter.place(x=status_width - offset, y= main_height - inner_offset, anchor='se')
+        self.lbl_bad_counter.place(x=status_width - offset, y= main_height, anchor='se')
 
         # --- Controls drawing section.
         control_frame = Frame(self, width=model_width, height=command_height,  bg=frame_bg_color)
@@ -525,14 +522,15 @@ class GUI(Tk):
         self.btn_stop.bind('<ButtonPress-1>', self.on_stop_btn_press)
         self.btn_stop.bind('<ButtonRelease-1>', self.on_stop_btn_release)
 
-        self.video_label = Label(self, text="Loading camera...", bg= ready_text_color)
-        self.video_label.place(x=0, y=0, anchor='nw')
-        vision_system.start_stream()
-        self.update_video_feed()
-
         Button(control_frame, text='MANUAL', bg=highlight_color, fg=fail_text_color,
                 font=subtitle_font, width=11, height=2,
                 command=self.open_manual_mode).place(x=model_width-inner_offset, y=3 * inner_offset, anchor='ne')
+
+        # --- Camera drawing section.
+        self.video_label = Label(status_frame, text="Loading camera...", bg=ready_text_color)
+        self.video_label.place(x=2 * inner_offset, y=inner_offset, anchor='nw')
+        vision_system.start_stream()
+        self.update_video_feed()
 
     def update_video_feed(self):
         frame_rgb = vision_system.get_frame_for_gui()
@@ -671,9 +669,9 @@ class GUI(Tk):
         if msg.startswith('manual_status'):
             try:
                 data = msg.split(':')[1]
-                start, sensor, busy, ok, src, drv, tool_pos, tool_down = data.split(',')
+                start, sensor, busy, ok, src, drv,tool_down = data.split(',')
                 if hasattr(self, 'manual_window') and self.manual_window.winfo_exists():
-                    self.manual_window.update_manual(start, sensor, busy, ok, src, drv, tool_down, tool_pos)
+                    self.manual_window.update_manual(start, sensor, busy, ok, src, drv, tool_down)
             except Exception as e:
                 pass
             return

@@ -5,12 +5,9 @@ class PINS:
     """ BCM pins for the test gpio. """
     # --- Test stand pins.
     START_SIGNAL = 22   # Input: pin to start the test.
-    SENSOR = 10         # Input: pin for the edge laser sensor.
     BUSY_SIGNAL = 6     # Output: pin to show test is running.
     OK_SIGNAL = 13      # Output: pin for pass/fail result.
     TOOLING_DOWN = 9    # Input: pin for tooling down signal.
-    TOOLING_FAR_POS = 26    # Output: pin to move the tooling to far position. Mutex use with TOOLING_NEAR_POS
-    TOOLING_NEAR_POS = 19   # Output: pin to move the tooling to near position. Mutex use with TOOLING_FAR_POS
 
     # --- AC motor driver pins.
     AC_RELAY = 23
@@ -31,7 +28,9 @@ class PORTS:
 class PARAMS:
     """ Parameters that define the test execution. """
     # --- Test and calibration parameters.
-    TEST_TIMEOUT_SEC = 9.85
+    TEST_TIMEOUT_SEC = 8.0
+    VISION_TIMEOUT_SEC = 6.0
+    VISION_STABLE_TIME_SEC = 1.5
 
     # --- PSU parameters.
     PSU_STABILIZE_SEC = 1.5

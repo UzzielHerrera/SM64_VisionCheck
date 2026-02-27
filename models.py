@@ -4,6 +4,9 @@ import logging
 
 # --- Log handler setup/
 logger = logging.getLogger('SpinCheck')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODELS_FILE = os.path.join(BASE_DIR, 'models.json')
+LAST_RUN = os.path.join(BASE_DIR, 'last_run.json')
 
 class MotorModel:
     """ MotorModel class """
@@ -25,9 +28,9 @@ class MotorModel:
 
 class ModelManager:
     """ ModelManager class """
-    def __init__(self, models_filename='models.json', settings_filename='settings.json'):
+    def __init__(self, models_filename=MODELS_FILE, last_run_filename=LAST_RUN):
         self.models_filename = models_filename
-        self.settings_filename = settings_filename
+        self.last_run_filename = last_run_filename
         self.models = self.load_all()
 
     def load_all(self):
@@ -79,17 +82,17 @@ class ModelManager:
     def save_last_used(self, name):
         """ Saves the last used `MotorModel` object for the given `name`. """
         try:
-            with open(self.settings_filename, 'w') as f:
+            with open(self.last_run_filename, 'w') as f:
                 json.dump({'last_model': name}, f)
         except Exception as e:
             logger.error(f'ModelManager: {e}')
 
     def get_last_used(self):
         """ Returns the last used `MotorModel` object for the given `name`. """
-        if not os.path.exists(self.settings_filename):
+        if not os.path.exists(self.last_run_filename):
             return None
         try:
-            with open(self.settings_filename, 'r') as f:
+            with open(self.last_run_filename, 'r') as f:
                 data = json.load(f)
                 return data.get('last_model')
         except Exception as e:
@@ -97,7 +100,7 @@ class ModelManager:
             return None
 
 if __name__ == '__main__':
-    m = ModelManager('models.json')
+    m = ModelManager(MODELS_FILE)
 
     # --- Add a dummy model to demonstrate deletion
     if 'model_to_delete' not in m.get_all_names():

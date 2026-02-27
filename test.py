@@ -152,12 +152,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
             state = GPIO.input(PINS.OK_SIGNAL)
             GPIO.output(PINS.OK_SIGNAL, not state)
             return f'ok:{state}'
-        elif command == 'manual:toggle_tooling':
-            state = GPIO.input(PINS.TOOLING_FAR_POS)
-            GPIO.output(PINS.TOOLING_FAR_POS, not state)
-            GPIO.output(PINS.TOOLING_NEAR_POS, state)
-            return f'tooling:{state}'
-
         return 'error:unknown'
 
     def set_state(new_state):
@@ -180,17 +174,9 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
 
     # --- GPIO setup.
     GPIO.setup(PINS.START_SIGNAL, GPIO.IN)
-    GPIO.setup(PINS.SENSOR, GPIO.IN)
     GPIO.setup(PINS.TOOLING_DOWN, GPIO.IN)
-    GPIO.setup(PINS.TOOLING_FAR_POS, GPIO.OUT)
-    GPIO.setup(PINS.TOOLING_NEAR_POS, GPIO.OUT)
     GPIO.setup(PINS.BUSY_SIGNAL, GPIO.OUT)
     GPIO.setup(PINS.OK_SIGNAL, GPIO.OUT)
-
-    # --- Set tooling to far position:
-    GPIO.output(PINS.TOOLING_NEAR_POS, GPIO.LOW)
-    GPIO.output(PINS.TOOLING_FAR_POS, GPIO.HIGH)
-
 
     # --- Thread level setup and cleanup.
     try:
@@ -216,13 +202,12 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         sensor_value = GPIO.input(PINS.SENSOR)
                         busy_value = GPIO.input(PINS.BUSY_SIGNAL)
                         ok_value = GPIO.input(PINS.OK_SIGNAL)
-                        tool_pos_value = GPIO.input(PINS.TOOLING_FAR_POS)
                         tooling_value = GPIO.input(PINS.TOOLING_DOWN)
 
                         scr_value = 1 if manual_source_active else 0
                         drv_value = 1 if manual_driver_active else 0
                         gui_queue.put(f'manual_status:{start_value}, {sensor_value}, {busy_value}, {ok_value},'
-                                        f' {scr_value}, {drv_value}, {tool_pos_value}, {tooling_value}')
+                                        f' {scr_value}, {drv_value}, {tooling_value}')
 
                         try:
                             # --- Check for command in the queue and handle it.
@@ -376,11 +361,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         # --- Turn on relay / h-bridge.
                         motor_driver.apply_power()
 
-                        # --- Set tooling to near position.
-                        logger.debug('FSM: Setting tool to near position.')
-                        GPIO.output(PINS.TOOLING_FAR_POS, GPIO.LOW)
-                        GPIO.output(PINS.TOOLING_NEAR_POS, GPIO.HIGH)
-
                         if stop_flag.wait(PARAMS.MOTOR_STABILIZE_SEC): continue
 
                         # --- AC power source ramp setup.
@@ -433,9 +413,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
                             source_controller.set_frequency(current_model.start_freq)
 
-                        # --- Set tooling to far position:
-                        GPIO.output(PINS.TOOLING_NEAR_POS, GPIO.LOW)
-                        GPIO.output(PINS.TOOLING_FAR_POS, GPIO.HIGH)
                         set_state(State.TEST_ANALYZE)
 
                     # --- Test analyze state.
@@ -509,8 +486,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         gui_queue.put('cancelled:by_user')
 
                         # --- Reset outputs.
-                        GPIO.output(PINS.TOOLING_NEAR_POS, GPIO.LOW)
-                        GPIO.output(PINS.TOOLING_FAR_POS, GPIO.HIGH)
                         GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
                         if stop_flag.wait(PARAMS.PASS_WAIT_SEC): continue
                         GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)

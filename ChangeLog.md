@@ -1,5 +1,18 @@
 # SM64 Change Log
 
+## V26.02.26
+### Added
+* **Real-time FPS Display:** Added an on-screen overlay to the video feed to monitor the current frames per second (FPS) of the vision processing loop.
+
+### Changed
+* **Dynamic File Paths:** Updated file path handling for configuration and data files (`models.json`, `settings.json`, `vision_config.json`). The system now calculates an absolute `BASE_DIR` from the python script's location, preventing path-related errors when executing from different directories.
+* **GUI Layout Restructure:** Reorganized and updated the positioning of user interface elements within `gui.py` for better usability and flow.
+* **Optical Flow Tracking Improvements:** Optimized Lucas-Kanade tracking in `vision.py`. Implemented proactive point repopulation (generating new points before the pool depletes) and added a 15% dynamic exclusion margin inside the ROI to aggressively eliminate old points and prevent tracking drift at the edges.
+
+### Removed
+* **Legacy Tooling Hardware Logic:** Completely removed logic, configuration, and usages related to the physical tooling movements and encoder sensor from `test.py` and `config.py` (specifically removing GPIO definitions for `SENSOR`, `TOOLING_FAR_POS`, and `TOOLING_NEAR_POS`).
+* **Manual Tooling Controls:** Removed the "Toggle Tooling" functionality from the Manual Controller interface in `gui.py` as part of the hardware cleanup.
+
 ## V26.02.16
 ### Added
 * **VisionSystem Class:** Implemented a modular, object-oriented class in `vision.py` to handle all computer vision tasks.
@@ -8,11 +21,11 @@
 * **Interactive ROI Calibration:** Added a visual calibration routine allowing the user to graphically select the Rotation Zone (Green) and Runout Zones (Red) directly from the live video feed.
 * **Direction Attribute:** Added a direction field (string: 'CW' or 'CCW') in `models.py`. This attribute serves as the ground truth to validate the optical flow detection results against the expected product rotation.
 
-## Changed
+### Changed
 * **FSM Integration:** Refactored the `TEST_ACTIVE` state in the Finite State Machine (`test.py`). It now utilizes a non-blocking "Trigger & Poll" pattern to initiate the vision test and asynchronously check for results (`PASS`, `FAIL`, or `TIMEOUT`).
 * **Calibration Workflow:** Replaced the previous logic-based calibration with the new interactive visual ROI selection method on `gui.py`.
 
-## Removed
+### Removed
 * **Legacy Calibration Logic:** Removed calibration procedures from the `TEST_ANALYZE` state in `test.py` as hardware encoder calibration is no longer required.
 * **Legacy Encoder Functions:** Deleted `motor_analyze` and `motor_calibrate` functions from `test.py`.
 * **Hardware Dependencies:** Removed all logic related to reading physical GPIO pins for encoders, fully migrating the system to software-based optical flow detection.
