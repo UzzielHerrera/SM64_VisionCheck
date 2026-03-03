@@ -440,7 +440,7 @@ class GUI(Tk):
 
         inner_offset = 15
         state_offset = 4 * inner_offset
-        state_width = status_width - 2 * state_offset
+        state_width = status_width - state_offset
         state_height = state_offset
 
         command_height = status_height - offset - model_height
@@ -458,7 +458,7 @@ class GUI(Tk):
             logger.info(f'Running from terminal')
             self['width'] = screen_width
             self['height'] = screen_height
-            # self.after(250, self.__force_fullscreen)
+            self.after(500, self.__force_fullscreen)
 
         # --- Header drawing section.
         header_frame = Frame(self, width=header_width, height=header_height, bg=frame_bg_color)
@@ -500,13 +500,13 @@ class GUI(Tk):
         self.status_label.place(x = int(state_width / 2), y=inner_offset, anchor='n')
 
         self.info_label = Label(status_frame, text="Esperando modelo...", font=text_font, bg=frame_bg_color)
-        self.info_label.place(x=int(status_width / 2), y=main_height - 2 *  inner_offset, anchor='s')
+        self.info_label.place(x=int(status_width / 2), y=main_height - 2 * inner_offset, anchor='s')
 
         self.lbl_good_counter = Label(status_frame, text="Buenas: 0", font=text_font, bg=frame_bg_color)
-        self.lbl_good_counter.place(x=offset, y= main_height, anchor='sw')
+        self.lbl_good_counter.place(x= 2 * inner_offset, y= main_height - 7, anchor='sw')
 
         self.lbl_bad_counter = Label(status_frame, text="Malas: 0", font=text_font, bg=frame_bg_color)
-        self.lbl_bad_counter.place(x=status_width - offset, y= main_height, anchor='se')
+        self.lbl_bad_counter.place(x=status_width - 2 * inner_offset, y= main_height - 7, anchor='se')
 
         # --- Controls drawing section.
         control_frame = Frame(self, width=model_width, height=command_height,  bg=frame_bg_color)
@@ -544,7 +544,6 @@ class GUI(Tk):
             self.video_label.config(image=img_tk)
 
         self.after(30, self.update_video_feed)
-
 
     # --- Logic methods.
     def open_manual_mode(self):
@@ -648,23 +647,6 @@ class GUI(Tk):
     def update_gui_from_message(self, msg: str):
         """ Parses messages and updates colors/text. """
 
-        # --- Handle calibration tuple to save it for persistence.
-        if isinstance(msg, tuple):
-            tag, data = msg
-            if tag == 'calibrated':
-                logger.warning(f'GUI: calibration results: "{data}"')
-                model = self.model_manager.get_model(self.lbl_current_model['text'])
-                if model:
-                    model.calibration_table = data
-                    self.model_manager.save_all()
-                    self.result_hold = True
-                    if self.hold_timer: self.after_cancel(self.hold_timer)
-                    self.hold_timer = self.after(2000, self.clear_result_hold)
-                    self.change_status('CALIBRADO', pass_color, fail_text_color)
-                    self.info_label['text'] = 'Calibracion guardada'
-                    logger.warning(f'GUI: calibration table "{data}" saved in model "{self.lbl_current_model["text"]}"')
-                return
-
         # --- Handle manual mode's messages.
         if msg.startswith('manual_status'):
             try:
@@ -726,14 +708,12 @@ class GUI(Tk):
         elif msg == 'analyzing':
             self.change_status('PROBANDO', process_color, ready_text_color)
             self.info_label['text'] = 'Analizando resultados'
-        elif 'cancelled' in msg:
+        elif msg == 'cancelled:by_user':
             self.change_status('CANCELADO', fail_color, fail_text_color)
-            reason = msg.split(':')[1]
-            logger.warning(f'GUI: cancelled reason {reason}')
-            if reason == 'by_user':
-                self.info_label['text'] = 'Prueba cancelada por usuario'
-            elif reason == 'timeout':
-                self.info_label['text'] = 'Prueba cancelada, motor fallo'
+            self.info_label['text'] = 'Cancelado por usuario'
+        elif msg == 'cancelled:timeout':
+            self.change_status('TIMEOUT', fail_color, fail_text_color)
+            self.info_label['text'] = 'Cancelado por timeout'
         elif 'error' in msg:
             self.change_status('ERROR', fail_color, fail_text_color)
             self.info_label['text'] = f'{msg[6:]}'

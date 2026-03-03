@@ -37,6 +37,8 @@ except (ImportError, RuntimeError):
 
 # --- Log handler setup.
 logger = logging.getLogger('SpinCheck')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_DIR = os.path.join(BASE_DIR, 'logs')
 
 # --- Test States.
 class State(IntEnum):
@@ -54,18 +56,17 @@ class State(IntEnum):
     TEST_COMPLETE = 12
     TEST_CANCEL = 13
 
-def log_test_results(model_name, status, reason):
+def log_test_results(model_name, status, reason, initial_current, final_current):
     try:
         # --- Create folder container.
-        log_dir = 'logs'
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
+        if not os.path.exists(LOG_DIR):
+            os.makedirs(LOG_DIR)
 
-        filename = os.path.join(log_dir, f'test_log_{datetime.now().strftime("%Y_%m_%d")}.csv')
+        filename = os.path.join(LOG_DIR, f'test_log_{datetime.now().strftime("%Y_%m_%d")}.csv')
         file_exists = os.path.isfile(filename)
 
         with open(filename, 'a', newline='') as csvfile:
-            headers = ['Timestamp', 'Model', 'Status', 'Reason']
+            headers = ['Timestamp', 'Model', 'Status', 'Reason', 'Initial_Current_mA', 'Final_Current_mA']
             writer = csv.DictWriter(csvfile, fieldnames=headers)
 
             # --- Create headers if file is written for the first time.
@@ -77,7 +78,9 @@ def log_test_results(model_name, status, reason):
                 'Timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 'Model': model_name,
                 'Status': status,
-                'Reason': reason
+                'Reason': reason,
+                'Initial_Current_mA': f'{(initial_current * 1000.0):0.2f}',
+                'Final_Current_mA': f'{(final_current * 1000.0):0.2f}'
             })
 
         logger.info(f'LOG: "{filename}" updated')
@@ -107,6 +110,8 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
     start_time = time.time()
     vision_results = None
     test_case_trigger: bool= False
+    initial_motor_current: float = 0.0
+    final_motor_current: float = 0.0
 
     # --- Manual mode variables.
     manual_source_active = False
@@ -183,6 +188,8 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
         # --- System infinite loop.
         while True:
             # --- Per Test Variables.
+            initial_motor_current: float = 0.0
+            final_motor_current: float = 0.0
             set_state(State.MODEL_CHECK)
             test_in_progress = True
 
@@ -363,6 +370,8 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
 
                         if stop_flag.wait(PARAMS.MOTOR_STABILIZE_SEC): continue
 
+                        initial_motor_current = source_controller.get_actual_current()
+
                         # --- AC power source ramp setup.
                         # if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
                         #     set_state(State.TEST_RAMP_SETUP)
@@ -409,6 +418,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                     elif current_state == State.TEST_STOP:
                         # --- Remove energy to uap.
                         gui_queue.put('de-energizing')
+                        final_motor_current = source_controller.get_actual_current()
                         motor_driver.remove_power()
                         if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
                             source_controller.set_frequency(current_model.start_freq)
@@ -422,21 +432,25 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
 
                         # --- Decision logic.
                         if vision_results == 'FAIL_RUNOUT':
+                            vision_system.save_video(f'{current_model.name}_runout')
                             results = {'status': 'FAIL', 'reason': 'Runout detected'}
 
                         elif vision_results == 'TIMEOUT':
+                            vision_system.save_video(f'{current_model.name}_timeout_{(final_motor_current*1000.0):0.1f}mA')
                             results = {'status': 'FAIL', 'reason': 'Camera timeout'}
 
                         elif vision_results == 'RIGHT':
                             if current_model.direction.upper() == 'CW':
                                 results = {'status': 'PASS', 'reason': 'Good motor'}
                             else:
+                                vision_system.save_video(f'{current_model.name}_invalid _direction')
                                 results = {'status': 'FAIL', 'reason': 'Invalid direction'}
 
                         elif vision_results == 'LEFT':
                             if current_model.direction.upper() == 'CCW':
                                 results = {'status': 'PASS', 'reason': 'Good motor'}
                             else:
+                                vision_system.save_video(f'{current_model.name}_invalid _direction')
                                 results = {'status': 'FAIL', 'reason': 'Invalid direction'}
 
                         else:
@@ -446,7 +460,9 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         log_test_results(
                             model_name=current_model.name,
                             status=results['status'],
-                            reason=results['reason']
+                            reason=results['reason'],
+                            initial_current=initial_motor_current,
+                            final_current=final_motor_current
                         )
 
                         # --- Pass handling.

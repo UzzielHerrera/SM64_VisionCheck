@@ -1,5 +1,19 @@
 # SM64 Change Log
 
+## V26.03.03
+### Added
+* **Power Supply Current Reading:** Added the `get_actual_current` method to the `PowerSource` abstract base class in `powersupply.py`. Implemented the logic in the `BK_Serial` class, which handles both DC and AC power supplies identically.
+* **Motor Current Testing:** Integrated current monitoring into the test sequence. The system now captures `initial_motor_current` (measured after the motor stabilization time) and `final_motor_current` (measured immediately before de-energizing the driver controller).
+* **Current Logging:** The results log now records the new measurements under the headers `Initial_Current_mA` and `Final_Current_mA`.
+* **Automated Failure Video Recording:** Implemented a continuous video buffer system in `vision.py` using two new methods: `save_video` and `_write_video_thread`. When a test fails, the system automatically saves the last frames as an MP4 file named with the format: `[Timestamp]_[ModelName]_[FailureType].mp4`.
+* **Video Log Auto-Cleanup:** Added a storage management routine within `_write_video_thread` that automatically deletes the oldest video files when the directory exceeds the new `VISION_MAX_VIDEO_LOGS` parameter defined in `config.py`.
+* **Otsu's Thresholding Mask:** Implemented dynamic image thresholding (Otsu's method) to filter out the dark background. This eliminates false tracking points that previously caused drift in spin calculations and false positive runout detections.
+* **Real-time Diagnostics Overlay:** The live video feed now displays the current computed Otsu threshold value alongside the real-time FPS counter.
+* **Mask Debugging Tool:** Added a `debug_mask` toggle in `vision.py`. When enabled, it visually renders the binary threshold mask (in black and white) directly in the GUI to aid in lighting and threshold calibration.
+
+### Fixed
+* **Results Log Path Resolution:** Fixed a bug where the results log file was not opening reliably by updating its path generation to use the absolute `BASE_DIR` reference.
+
 ## V26.02.26
 ### Added
 * **Real-time FPS Display:** Added an on-screen overlay to the video feed to monitor the current frames per second (FPS) of the vision processing loop.

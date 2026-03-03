@@ -35,6 +35,10 @@ class PowerSource(ABC):
         pass
 
     @abstractmethod
+    def get_actual_current(self):
+        pass
+
+    @abstractmethod
     def enable_output(self):
         pass
 
@@ -133,6 +137,14 @@ class BK_Serial(PowerSource):
         """ Get voltage output of the power supply. """
         try:
             return float(self._request_command(f'VOLT?'))
+        except Exception as e:
+            logger.error(e)
+            return 0.0
+
+    def get_actual_current(self):
+        """ Get the actual current output value. """
+        try:
+            return float(self._request_command(f'MEAS:CURR?'))
         except Exception as e:
             logger.error(e)
             return 0.0
@@ -238,15 +250,6 @@ class BK9201(DCSource, BK_Serial):
 
 
 if __name__ == '__main__':
-    dc = BK9201(PORTS.DC_PSU_PORT)
-    dc.request_control()
-    dc.set_voltage(1.25)
-    dc.set_max_current(0.05)
-    dc.enable_output()
-    time.sleep(3.0)
-    dc.disable_output()
-
-
     ac = BK9801(PORTS.AC_PSU_PORT)
     ac.request_control()
     ac.set_voltage(12.0)
@@ -254,6 +257,7 @@ if __name__ == '__main__':
     print(ac.get_voltage())
     ac.set_frequency(60.0)
     ac.enable_output()
-    time.sleep(3.0)
+    time.sleep(1.0)
+    print(ac.get_actual_current())
     ac.disable_output()
 

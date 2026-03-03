@@ -30,14 +30,16 @@ class PARAMS:
     # --- Test and calibration parameters.
     TEST_TIMEOUT_SEC = 8.0
     VISION_TIMEOUT_SEC = 6.0
-    VISION_STABLE_TIME_SEC = 1.5
+    VISION_STABLE_TIME_SEC = 2.5
+    VISION_TARGET_FPS = 28.0
+    VISION_MAX_VIDEO_LOGS = 200
 
     # --- PSU parameters.
-    PSU_STABILIZE_SEC = 1.5
+    PSU_STABILIZE_SEC = 0.1
     PSU_RAMP_STEPS = 10
 
     # --- Wait times (in seconds).
-    MOTOR_STABILIZE_SEC = 1.5
+    MOTOR_STABILIZE_SEC = 0.7
     MOTOR_RAMP_STEPS = 10
     GUI_UPDATE_TIMEOUT_SEC = 0.300
     YIELD_DELAY_SEC = 0.05
