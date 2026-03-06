@@ -1,5 +1,13 @@
 # SM64 Change Log
 
+## V26.03.05
+### Added
+* **Part Presence Detection:** Implemented an average brightness (pixel intensity) calculation within the region of interest (ROI) at the start of the test. This reliably detects whether the white plastic worm gear is physically present before initiating the optical flow tracking*
+* **Missing Part Failure Mode:** Added a new specific failure condition (`FAIL_MISSING_PART`). If the system detects a missing part based on the brightness threshold, the test is immediately aborted, the failure is recorded in the logs, and the GUI updates to show the "Missing Part" (Sinfín ausente) status.
+
+### Fixed
+* **GUI Memory Leak and Video Lag:** Resolved a progressive lag issue in the live video feed that caused high CPU usage in the X11/Xwayland display server over time. The fix decouples the GUI refresh rate from the camera capture rate using a `new_frame_available` flag and offloads the heavy image resizing calculations from PIL (main thread) to OpenCV (background vision thread). _Note: This lag was purely visual and did not impact the speed or accuracy of the underlying background test._
+
 ## V26.03.03
 ### Added
 * **Power Supply Current Reading:** Added the `get_actual_current` method to the `PowerSource` abstract base class in `powersupply.py`. Implemented the logic in the `BK_Serial` class, which handles both DC and AC power supplies identically.

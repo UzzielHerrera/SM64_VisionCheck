@@ -435,12 +435,17 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                             vision_system.save_video(f'{current_model.name}_runout')
                             results = {'status': 'FAIL', 'reason': 'Runout detected'}
 
+                        elif vision_results == 'FAIL_ENDLESS_MISSING':
+                            vision_system.save_video(f'{current_model.name}_endless_missing')
+                            results = {'status': 'FAIL', 'reason': 'Endless missing'}
+
                         elif vision_results == 'TIMEOUT':
                             vision_system.save_video(f'{current_model.name}_timeout_{(final_motor_current*1000.0):0.1f}mA')
                             results = {'status': 'FAIL', 'reason': 'Camera timeout'}
 
                         elif vision_results == 'RIGHT':
                             if current_model.direction.upper() == 'CW':
+                                vision_system.save_video(f'{current_model.name}_pass_cw')
                                 results = {'status': 'PASS', 'reason': 'Good motor'}
                             else:
                                 vision_system.save_video(f'{current_model.name}_invalid _direction')
@@ -448,6 +453,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
 
                         elif vision_results == 'LEFT':
                             if current_model.direction.upper() == 'CCW':
+                                vision_system.save_video(f'{current_model.name}_pass_ccw')
                                 results = {'status': 'PASS', 'reason': 'Good motor'}
                             else:
                                 vision_system.save_video(f'{current_model.name}_invalid _direction')

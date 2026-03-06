@@ -25,6 +25,7 @@ class VisionSystem:
         self.lock = threading.Lock()
 
         self.latest_frame = None
+        self.new_frame_available = False
         self.show_debug_points = True
         self.debug_mask = False
 
@@ -118,8 +119,10 @@ class VisionSystem:
     def get_frame_for_gui(self):
         """Get a copy from last frame in processing loop."""
         with self.lock:
+            self.new_frame_available = False
             if self.latest_frame is None: return None
             return self.latest_frame.copy()
+
 
     def _processing_loop(self):
         """Processing loop that detects spin direction and runout."""
@@ -141,6 +144,7 @@ class VisionSystem:
 
             # --- Threshold.
             optimal_threshold = 0
+            mean_brightness = 0
             strict_threshold = 0
             color_mask = None
 
@@ -158,6 +162,9 @@ class VisionSystem:
 
                 # --- Get roi gray frame
                 threshold_frame = frame_gray[int(vy):int(vy + vh), int(vx):int(vx + vw)]
+
+                # --- Get mean brightness.
+                mean_brightness = cv2.mean(threshold_frame)[0]
 
                 # --- Threshold value.
                 optimal_threshold, _ = cv2.threshold(threshold_frame, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
@@ -189,6 +196,12 @@ class VisionSystem:
 
                 # --- First tracking points calculate.
                 if p0 is None:
+                    # --- Check endless missing.
+                    if mean_brightness < PARAMS.VISION_ENDLESS_DETECTION:
+                        self.test_result = 'FAIL_ENDLESS_MISSING'
+                        self.test_active = False
+                        continue
+
                     # --- Create an array of 'Black' for mask as frame form.
                     mask = np.zeros_like(frame_gray)
                     # --- Draw a 'White' rectangle on mask where spin roi is.
@@ -316,7 +329,7 @@ class VisionSystem:
 
             # --- Draw FPS.
             alto_imagen = frame.shape[0]
-            cv2.putText(frame, f'FPS: {int(self.current_fps)}, OTSU: {int(strict_threshold)}', (10, alto_imagen - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (51, 255, 204), 2)
+            cv2.putText(frame, f'FPS: {int(self.current_fps)}, OTSU: {int(strict_threshold)}, BRIGHTNESS: {int(mean_brightness)}', (10, alto_imagen - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (51, 255, 204), 2)
 
             # --- Save frame to video buffer.
             with self.lock:
@@ -332,8 +345,12 @@ class VisionSystem:
             else:
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
+            # --- frame resize.
+            frame_gui = cv2.resize(frame_rgb, (320, 240))
+
             with self.lock:
-                self.latest_frame = frame_rgb
+                self.latest_frame = frame_gui
+                self.new_frame_available = True
 
     def calibrate_gui_safe(self):
         """

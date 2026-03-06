@@ -13,7 +13,7 @@ from test import finite_state_machine
 
 # --- Equipments information.
 equipment_name = 'TS111125'
-sw_version = 'v26.02.26'
+sw_version = 'v26.03.05'
 
 # --- Logger handler setup.
 logger = logging.getLogger('SpinCheck')
@@ -533,17 +533,17 @@ class GUI(Tk):
         self.update_video_feed()
 
     def update_video_feed(self):
-        frame_rgb = vision_system.get_frame_for_gui()
+        if vision_system.new_frame_available:
+            frame_rgb = vision_system.get_frame_for_gui()
 
-        if frame_rgb is not None:
-            img_pil = Image.fromarray(frame_rgb)
-            img_pil = img_pil.resize((320, 240))
-            img_tk = ImageTk.PhotoImage(img_pil)
+            if frame_rgb is not None:
+                image = Image.fromarray(frame_rgb)
+                photo = ImageTk.PhotoImage(image)
 
-            self.video_label.img_tk = img_tk
-            self.video_label.config(image=img_tk)
+                self.video_label.config(image=photo)
+                self.video_label.image = photo
 
-        self.after(30, self.update_video_feed)
+        self.after(35, self.update_video_feed)
 
     # --- Logic methods.
     def open_manual_mode(self):
