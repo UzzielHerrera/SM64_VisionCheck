@@ -1,19 +1,7 @@
-import queue
-from functools import partial
-from tkinter import *
-from tkinter import ttk, messagebox
-from PIL import Image, ImageTk
-from vision import vision_system
 import os
-import threading
 import logging
-from models import MotorModel, ModelManager
-from test import finite_state_machine
-
-
-# --- Equipments information.
-equipment_name = 'TS111125'
-sw_version = 'v26.03.05'
+from config import PARAMS
+from logging.handlers import RotatingFileHandler
 
 # --- Logger handler setup.
 logger = logging.getLogger('SpinCheck')
@@ -23,6 +11,24 @@ if not logger.handlers:
     formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+    log_file_path = os.path.join(PARAMS.BASE_DIR, 'app.log')
+    file_handler = RotatingFileHandler(filename=log_file_path, maxBytes=20 * 1024 * 1024, backupCount=5, encoding='utf-8')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+import queue
+import threading
+from tkinter import *
+from functools import partial
+from PIL import Image, ImageTk
+from vision import vision_system
+from tkinter import ttk, messagebox
+from test import finite_state_machine
+from models import MotorModel, ModelManager
+
+# --- Equipments information.
+equipment_name = 'TS111125'
+sw_version = 'v26.03.05'
 
 # --- Color constants.
 pass_color = '#57da50'
@@ -458,7 +464,7 @@ class GUI(Tk):
             logger.info(f'Running from terminal')
             self['width'] = screen_width
             self['height'] = screen_height
-            self.after(500, self.__force_fullscreen)
+            # self.after(500, self.__force_fullscreen)
 
         # --- Header drawing section.
         header_frame = Frame(self, width=header_width, height=header_height, bg=frame_bg_color)
@@ -620,8 +626,10 @@ class GUI(Tk):
                 if user_input == 'exit':
                     self.on_close()
                 else:
+                    if user_input == 'cmd:calibrate':
+                        self.calibrate_model()
                     # --- Write commands to FSM.
-                    if 'cmd' in user_input:
+                    elif 'cmd' in user_input:
                         self.model_queue.put(user_input)
                     # --- Write command to GUI.
                     else:
@@ -722,7 +730,6 @@ class GUI(Tk):
 
     def clear_result_hold(self):
         """ Clear the result 2-second persistence. """
-        logger.info('GUI: results reset triggered')
         self.result_hold = False
         self.hold_timer = None
         self.change_status('LISTO', disable_color, ready_text_color)

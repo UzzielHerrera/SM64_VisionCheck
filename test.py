@@ -9,6 +9,7 @@ from queue import Queue, Empty
 from threading import Event
 from models import MotorModel
 from vision import vision_system
+from equipments_connection import db
 from config import PINS, PORTS, PARAMS
 from powersupply import PowerSource, ACSource, BK9801, BK9201
 from motordriver import MotorDriver, ACDriver, DCDriver
@@ -37,8 +38,7 @@ except (ImportError, RuntimeError):
 
 # --- Log handler setup.
 logger = logging.getLogger('SpinCheck')
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOG_DIR = os.path.join(BASE_DIR, 'logs')
+LOG_DIR = os.path.join(PARAMS.BASE_DIR, 'logs')
 
 # --- Test States.
 class State(IntEnum):
@@ -117,6 +117,12 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
     manual_source_active = False
     manual_driver_active = False
 
+    # --- Test database connection.
+    if not db.test_connection():
+        logger.critical(f'DB: Not connected to database')
+    else:
+        logger.info('DB: Connected to database')
+
     # --- Function handlers.
     def handle_manual_cmd(command, source_ctrl: PowerSource, motor_drv: MotorDriver):
         nonlocal manual_source_active, manual_driver_active
@@ -164,7 +170,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
         # --- If different state, process change.
         if new_state != current_state:
             current_state = new_state
-            logger.debug(f'FSM: {new_state.name}')
+            logger.info(f'FSM: {new_state.name}')
 
     # --- GPIO config.
     current_rpi_mode = GPIO.getmode()
@@ -245,7 +251,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                             new_model = fsm_queue.get_nowait()
                             logger.debug(f'FSM: new model: {new_model}')
                         except Empty:
-                            logger.debug('FSM: model queue empty')
+                            # logger.debug('FSM: model queue empty')
                             pass
 
                         # --- Check if model is a manual mode command.
@@ -277,6 +283,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
 
                         if new_model is None:
                             logger.warning('FSM: shutting down finite state machine')
+                            db.queue.put(None)
                             return
 
                         if not source_is_active:
@@ -287,6 +294,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                     # --- Model load state.
                     elif current_state == State.MODEL_LOAD:
                         gui_queue.put(f'model:{current_model.name}')
+                        db.change_model('TS111125', current_model.name)
 
                         # --- Create drivers only if none.
                         if source_controller is None:
@@ -337,7 +345,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                                 # --- Anti debounce check.
                                 if stop_flag.wait(PARAMS.DEBOUNCE_SEC): continue
                                 if GPIO.input(PINS.START_SIGNAL) == GPIO.HIGH or test_case_trigger:
-                                    logger.info(f'FSM: Start new test')
                                     test_case_trigger = False
                                     GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
                                     set_state(State.TEST_INIT)
@@ -348,7 +355,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                             # --- Look up for model change.
                             try:
                                 if not fsm_queue.empty():
-                                    logger.debug('FSM: New model received')
                                     set_state(State.MODEL_CHECK)
                                     break
                             except:
@@ -429,38 +435,53 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                     elif current_state == State.TEST_ANALYZE:
                         gui_queue.put('analyzing')
                         results = {'status': 'FAIL', 'reason': 'Camera analyzing'}
+                        db_log = {
+                            'equipment_number': 'TS111125',
+                            'serial_num': 'NA',
+                            'results': '',
+                            'defect_description': '',
+                            'parameters': f'CW, 24V, {final_motor_current * 1000:0.1f}mA',
+                            'model': current_model.name
+                        }
 
                         # --- Decision logic.
                         if vision_results == 'FAIL_RUNOUT':
                             vision_system.save_video(f'{current_model.name}_runout')
                             results = {'status': 'FAIL', 'reason': 'Runout detected'}
+                            db_log['results'], db_log['defect_description'] = 'Fail', 'Runout'
 
                         elif vision_results == 'FAIL_ENDLESS_MISSING':
                             vision_system.save_video(f'{current_model.name}_endless_missing')
                             results = {'status': 'FAIL', 'reason': 'Endless missing'}
+                            db_log['results'], db_log['defect_description'] = 'Fail', 'Falta sinfin'
 
                         elif vision_results == 'TIMEOUT':
                             vision_system.save_video(f'{current_model.name}_timeout_{(final_motor_current*1000.0):0.1f}mA')
-                            results = {'status': 'FAIL', 'reason': 'Camera timeout'}
+                            results = {'status': 'FAIL', 'reason': 'Motor not moved'}
+                            db_log['results'], db_log['defect_description'] = 'Fail', 'Sin movimiento'
 
                         elif vision_results == 'RIGHT':
                             if current_model.direction.upper() == 'CW':
-                                vision_system.save_video(f'{current_model.name}_pass_cw')
                                 results = {'status': 'PASS', 'reason': 'Good motor'}
+                                db_log['results'], db_log['defect_description'] = 'Pass', '-'
                             else:
                                 vision_system.save_video(f'{current_model.name}_invalid _direction')
                                 results = {'status': 'FAIL', 'reason': 'Invalid direction'}
+                                db_log['results'], db_log['defect_description'] = 'Fail', 'Direccion invertida'
 
                         elif vision_results == 'LEFT':
                             if current_model.direction.upper() == 'CCW':
-                                vision_system.save_video(f'{current_model.name}_pass_ccw')
                                 results = {'status': 'PASS', 'reason': 'Good motor'}
+                                db_log['results'], db_log['defect_description'] = 'Pass', '-'
                             else:
                                 vision_system.save_video(f'{current_model.name}_invalid _direction')
                                 results = {'status': 'FAIL', 'reason': 'Invalid direction'}
+                                db_log['results'], db_log['defect_description'] = 'Fail', 'Direccion invertida'
 
                         else:
                             results = {'status': 'FAIL', 'reason': 'Camera failed'}
+
+                        db.write_log(**db_log)
 
                         # --- Log to results.
                         log_test_results(
@@ -471,8 +492,16 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                             final_current=final_motor_current
                         )
 
+                        # --- Missing part bypass.
+                        if vision_results == 'FAIL_ENDLESS_MISSING':
+                            logger.info(f'FSM: Test bypass results: {results['status']} reason: {results['reason']}')
+                            gui_queue.put('failed')
+                            GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
+                            if stop_flag.wait(PARAMS.PASS_WAIT_SEC): continue
+                            GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
+
                         # --- Pass handling.
-                        if results['status'] == 'PASS':
+                        elif results['status'] == 'PASS':
                             logger.info(f'FSM: Test results: {results['status']}')
                             gui_queue.put('passed')
                             GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
@@ -483,9 +512,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         else:
                             logger.info(f'FSM: Test results: {results['status']} reason: {results['reason']}')
                             gui_queue.put('failed')
-                            # GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
-                            GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
-                            if stop_flag.wait(PARAMS.PASS_WAIT_SEC): continue
+                            GPIO.output(PINS.OK_SIGNAL, GPIO.LOW)
                             GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
 
                         set_state(State.TEST_COMPLETE)

@@ -1,5 +1,7 @@
 ### --- config.py
 # This file holds all configuration constants for the test
+import os
+
 
 class PINS:
     """ BCM pins for the test gpio. """
@@ -28,19 +30,23 @@ class PORTS:
 class PARAMS:
     """ Parameters that define the test execution. """
     # --- Test and calibration parameters.
-    TEST_TIMEOUT_SEC = 8.0
-    VISION_TIMEOUT_SEC = 6.0
-    VISION_STABLE_TIME_SEC = 2.5
+    TEST_TIMEOUT_SEC = 9.0
+    VISION_TIMEOUT_SEC = 7.0
+    VISION_STABLE_TIME_SEC = 3.0
     VISION_TARGET_FPS = 28.0
     VISION_MAX_VIDEO_LOGS = 600
     VISION_ENDLESS_DETECTION = 130
+    VISION_LEFT_SENSE_DETECTION = -0.25
+    VISION_RIGHT_SENSE_DETECTION = 0.25
+    VISION_MIN_TRUST = 0.7
+    VISION_RUNOUT_PIXEL_TOLERANCE = 50
 
     # --- PSU parameters.
     PSU_STABILIZE_SEC = 0.1
     PSU_RAMP_STEPS = 10
 
     # --- Wait times (in seconds).
-    MOTOR_STABILIZE_SEC = 0.7
+    MOTOR_STABILIZE_SEC = 1.5
     MOTOR_RAMP_STEPS = 10
     GUI_UPDATE_TIMEOUT_SEC = 0.300
     YIELD_DELAY_SEC = 0.05
@@ -49,3 +55,6 @@ class PARAMS:
     BUSY_DELAY_SEC = 0.1
     PASS_WAIT_SEC = 0.1
     DEBOUNCE_SEC = 0.010
+
+    # --- Directories.
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))

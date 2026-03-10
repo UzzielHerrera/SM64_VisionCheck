@@ -1,12 +1,12 @@
-import json
 import os
+import json
 import logging
+from config import PARAMS
 
 # --- Log handler setup/
 logger = logging.getLogger('SpinCheck')
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODELS_FILE = os.path.join(BASE_DIR, 'models.json')
-LAST_RUN = os.path.join(BASE_DIR, 'last_run.json')
+MODELS_FILE = os.path.join(PARAMS.BASE_DIR, 'models.json')
+LAST_RUN = os.path.join(PARAMS.BASE_DIR, 'last_run.json')
 
 class MotorModel:
     """ MotorModel class """

@@ -1,5 +1,21 @@
 # SM64 Change Log
 
+## V26.03.10
+### Added
+* **Dynamic ROI Alignment (Fixture Tool):** Implemented a one-time template matching routine at the beginning of each test. This acts as a software fixture tool, calculating any physical offset and dynamically adjusting all ROIs from their base_roi coordinates to compensate for mechanical tolerances.
+* **New Configuration Parameters:** Introduced `VISION_LEFT_SENSE_DETECTION`, `VISION_RIGHT_SENSE_DETECTION`, `VISION_MIN_TRUST`, and `VISION_RUNOUT_PIXEL_TOLERANCE` to the `PARAMS` config structure.
+* **Database Connection Module:** Introduced `equipments_connection.py` featuring the `EquipmentsConnection` class for robust, remote MySQL server integration.
+* **Secure Configuration:** Implemented secure credential loading from an external `credentials.json` file (handling host, username, password, and database targeting).
+* **Asynchronous Logging (Worker Thread):** Engineered a dedicated background daemon thread utilizing a thread-safe queue. This ensures network latency or database queries never block the main State Machine (FSM).
+* **Store & Forward Architecture (Offline Support):** Added a local SQLite buffer (`local_buffer.db`). If the network connection drops, test results are immediately saved locally and automatically synced to the remote MySQL server once the connection is restored, guaranteeing zero data loss.
+* **Smart Upsert Logic:** The worker thread now intelligently evaluates incoming serial numbers. It automatically performs an `INSERT` for new parts or an `UPDATE` for existing serials, appending the test history (e.g., results, defects, timestamps) and incrementing the attempts counter.
+* **Equipment Model Management:** Added functions to query, verify, and update the current running model directly in the database (`change_model` logic).
+
+### Changed
+* **Runout Detection Overhaul:** Completely redesigned the runout detection mechanism. It now evaluates the `color_mask` (Otsu thresholding) by counting the number of white pixels (plastic worm gear) invading the runout zones.  Optical flow tracking points are now exclusively dedicated to motion detection, significantly streamlining the logic.
+* **Enhanced GUI Calibration:** Updated the `calibrate_gui_safe` method in `vision.py` to include a new step for master template selection. It now automatically saves the `master_template_x` and `master_template_y` coordinates to `vision_config.json` and stores the template image (`template_motor.png`) directly in grayscale format.
+* **Parameter Centralization:** Removed hardcoded vision thresholds from `vision.py` and successfully migrated them to the centralized `PARAMS` configuration file for easier tuning.
+
 ## V26.03.05
 ### Added
 * **Part Presence Detection:** Implemented an average brightness (pixel intensity) calculation within the region of interest (ROI) at the start of the test. This reliably detects whether the white plastic worm gear is physically present before initiating the optical flow tracking*
@@ -27,7 +43,7 @@
 * **Real-time FPS Display:** Added an on-screen overlay to the video feed to monitor the current frames per second (FPS) of the vision processing loop.
 
 ### Changed
-* **Dynamic File Paths:** Updated file path handling for configuration and data files (`models.json`, `settings.json`, `vision_config.json`). The system now calculates an absolute `BASE_DIR` from the python script's location, preventing path-related errors when executing from different directories.
+* **Dynamic File Paths:** Updated file path handling for configuration and data files (`models.json`, `last_run.json`, `vision_config.json`). The system now calculates an absolute `BASE_DIR` from the python script's location, preventing path-related errors when executing from different directories.
 * **GUI Layout Restructure:** Reorganized and updated the positioning of user interface elements within `gui.py` for better usability and flow.
 * **Optical Flow Tracking Improvements:** Optimized Lucas-Kanade tracking in `vision.py`. Implemented proactive point repopulation (generating new points before the pool depletes) and added a 15% dynamic exclusion margin inside the ROI to aggressively eliminate old points and prevent tracking drift at the edges.
 
