@@ -23,7 +23,6 @@ if not logger.handlers:
 # --- File paths.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CREDENTIALS_FILE = os.path.join(BASE_DIR, 'credentials.json')
-LOG_FILE = os.path.join(BASE_DIR, 'db_log.csv')
 LOCAL_BUFFER_DB_FILE = os.path.join(BASE_DIR, 'local_buffer.db')
 
 
@@ -108,11 +107,22 @@ class EquipmentsConnection:
         return result
 
     def _get_current_date_hour(self):
-        """ Get current date and hour. """
+        """ Get current date and hour safely regardless of OS locale. """
         now = datetime.now()
-        date_format = '%#m/%#d/%Y' if 'win' in sys.platform else '%-m/%-d/%Y'
-        hour_format = '%#I:%M %p' if 'win' in sys.platform else '%-I:%M %p'
-        return now.strftime(date_format), now.strftime(hour_format)
+
+        # --- Get date (month/day/year).
+        current_date = f"{now.month}/{now.day}/{now.year}"
+
+        # --- Get am or pm.
+        am_pm = "AM" if now.hour < 12 else "PM"
+
+        # --- Get hour in 12-hour format with zero padding.
+        hour_12 = now.hour % 12
+        if hour_12 == 0:
+            hour_12 = 12
+        current_hour = f"{hour_12}:{now.minute:02d} {am_pm}"
+
+        return current_date, current_hour
 
     def _check_serial_number_exists(self, equipment_number, serial_number):
         query = f"SELECT RESULT_REGISTER, DEFECT_DESCRIPTION_REGISTER, TEST_D_REGISTER, TEST_H_REGISTER, ATTEMPTS, NEST FROM {equipment_number} WHERE SERIAL_NUM=%s"

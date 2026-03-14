@@ -47,6 +47,7 @@ class VisionSystem:
         # --- Video variables.
         self.video_buffer = deque(maxlen=int(PARAMS.VISION_TIMEOUT_SEC * PARAMS.VISION_TARGET_FPS))
         self.saving_video = False
+        self.failed_frames_count = 0
 
         # --- Logic variables.
         self.last_stable_state = 'STOP'
@@ -156,285 +157,322 @@ class VisionSystem:
         p0 = None
         old_gray = None
         prev_time = time.time()
+        movement_detected = False
 
         while self.streaming:
-            if self.cap is None: break
-            ret, frame = self.cap.read()
-            if not ret:
-                time.sleep(0.01)
-                continue
+            try:
 
-            # --- FPS calculate.
-            current_time = time.time()
-            dt = current_time - prev_time
-            prev_time = current_time
+                # --- Return if camera not initialized.
+                if self.cap is None: break
 
-            # --- Threshold.
-            optimal_threshold = 0
-            mean_brightness = 0
-            strict_threshold = 0
-            color_mask = None
+                # --- Get new frame from camera.
+                ret, frame = self.cap.read()
 
-            if dt > 0:
-                fps_instantaneo = 1.0 / dt
-                self.current_fps = (self.current_fps * 0.9) + (fps_instantaneo * 0.1)
+                # --- Check if error in frames, with camera auto-reconnect.
+                if not ret:
+                    self.failed_frames_count += 1
 
-            # --- Set frame from BGR to GRAY for analysis.
-            frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    if self.failed_frames_count == 1:
+                        logger.warning('VISION: Frame lost. USB Communication failed.')
 
-            # --- Spin detection roi drawing.
-            if self.spin_roi:
-                vx, vy, vw, vh = self.spin_roi
-                cv2.rectangle(frame, (int(vx), int(vy)), (int(vx + vw), int(vy + vh)), (0, 255, 0), 2)
+                    if self.failed_frames_count > PARAMS.VISION_FAILED_FRAMES_THRESHOLD:
+                        logger.error('VISION: Camera blocked, trying reconnection.')
+                        self.cap.release()
+                        time.sleep(1.5)
 
-                # --- Get roi gray frame
-                threshold_frame = frame_gray[int(vy):int(vy + vh), int(vx):int(vx + vw)]
+                        self.cap = cv2.VideoCapture(0)
+                        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                        self.failed_frames_count = 0
 
-                # --- Get mean brightness.
-                mean_brightness = cv2.mean(threshold_frame)[0]
-
-                # --- Threshold value.
-                optimal_threshold, _ = cv2.threshold(threshold_frame, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-                strict_threshold = optimal_threshold * 1.10
-                strict_threshold = min(230, strict_threshold)
-                _, color_mask = cv2.threshold(frame_gray, strict_threshold, 255, cv2.THRESH_BINARY)
-
-            # --- Runout detection roi drawing.
-            for r in self.runout_rois:
-                bx, by, bw, bh = r
-                if bw > 0:
-                    cv2.rectangle(frame, (int(bx), int(by)), (int(bx + bw), int(by + bh)), (0, 0, 255), 2)
-
-            # --- Full logic.
-            if self.test_active and self.spin_roi and color_mask is not None:
-
-                # --- Dynamic alignment.
-                if not self.alignment_done and self.template_img is not None:
-                    # --- Look up for template.
-                    res = cv2.matchTemplate(frame_gray, self.template_img, cv2.TM_CCOEFF_NORMED)
-                    min_value, max_value, min_loc, max_loc = cv2.minMaxLoc(res)
-
-                    if max_value > PARAMS.VISION_MIN_TRUST:
-                        current_x, current_y = max_loc
-
-                        # --- Calculate delta x and y.
-                        self.fixture_dx = current_x - self.master_template_x
-                        self.fixture_dy = current_y - self.master_template_y
-
-
-                        if abs(self.fixture_dx) < 40 and abs(self.fixture_dy) < 40:
-                            # --- Adjust test rois with base rois.
-                            bx, by, bw, bh = self.base_spin_roi
-                            self.spin_roi = (bx + self.fixture_dx, by + self.fixture_dy, bw, bh)
-
-                            new_runout_rois = []
-                            for runout_roi in self.base_runout_rois:
-                                rx, ry, rw, rh = runout_roi
-                                if rw > 0:
-                                    new_runout_rois.append((rx + self.fixture_dx, ry + self.fixture_dy, rw, rh))
-                                else:
-                                    new_runout_rois.append(runout_roi)
-                            self.runout_rois = new_runout_rois
-
-                            logger.info(f"VISION: Dynamic alignment done. Offset dx={self.fixture_dx}, dy={self.fixture_dy}")
-                        else:
-                            logger.warning(f"VISION: Too much disalignment. Offset dx={self.fixture_dx}, dy={self.fixture_dy}")
-                    else:
-                        logger.warning(f"VISION: Template not found. trust={max_value:.2f}")
-                    self.alignment_done = True
-
-                # --- Get roi as x, y, width and height.
-                vx, vy, vw, vh = self.spin_roi
-
-                # --- Force clean.
-                if self.reset_tracking_flag:
-                    p0 = None
-                    old_gray = None
-                    self.reset_tracking_flag = False
-
-                # --- Timeout detection.
-                if (time.time() - self.test_start_time) > PARAMS.VISION_TIMEOUT_SEC:
-                    self.test_result = 'TIMEOUT'
-                    self.test_active = False
-
-                # --- Check endless missing.
-                if mean_brightness < PARAMS.VISION_ENDLESS_DETECTION:
-                    self.test_result = 'FAIL_ENDLESS_MISSING'
-                    self.test_active = False
+                    time.sleep(0.01)
                     continue
 
-                # --- Runout detection.
-                runout_detected = False
-                for roi in self.runout_rois:
-                    bx, by, bw, bh = roi
+                # --- FPS calculate.
+                current_time = time.time()
+                dt = current_time - prev_time
+                prev_time = current_time
+
+                # --- Threshold.
+                optimal_threshold = 0
+                mean_brightness = 0
+                strict_threshold = 0
+                color_mask = None
+
+                if dt > 0:
+                    fps_instantaneo = 1.0 / dt
+                    self.current_fps = (self.current_fps * 0.9) + (fps_instantaneo * 0.1)
+
+                # --- Set frame from BGR to GRAY for analysis.
+                frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+                # --- Spin detection roi drawing.
+                if self.spin_roi:
+                    vx, vy, vw, vh = self.spin_roi
+                    cv2.rectangle(frame, (int(vx), int(vy)), (int(vx + vw), int(vy + vh)), (0, 255, 0), 1)
+
+                    # --- Get roi gray frame
+                    threshold_frame = frame_gray[int(vy):int(vy + vh), int(vx):int(vx + vw)]
+
+                    # --- Get mean brightness.
+                    mean_brightness = cv2.mean(threshold_frame)[0]
+
+                    # --- Threshold value.
+                    optimal_threshold, _ = cv2.threshold(threshold_frame, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+                    strict_threshold = optimal_threshold * 1.10
+                    strict_threshold = min(230, strict_threshold)
+                    _, color_mask = cv2.threshold(frame_gray, strict_threshold, 255, cv2.THRESH_BINARY)
+
+                # --- Runout detection roi drawing.
+                for r in self.runout_rois:
+                    bx, by, bw, bh = r
                     if bw > 0:
-                        # --- Select roi in thresholding mask.
-                        max_y, max_x = color_mask.shape
-                        y1 = max(0, int(by))
-                        y2 = min(max_y, int(by + bh))
-                        x1 = max(0, int(bx))
-                        x2 = min(max_x, int(bx + bw))
+                        cv2.rectangle(frame, (int(bx), int(by)), (int(bx + bw), int(by + bh)), (0, 0, 255), 1)
 
-                        # --- Get runout pixels.
-                        runout_region = color_mask[y1:y2, x1:x2]
-                        self.runout_pixels = cv2.countNonZero(runout_region)
+                # --- Full logic.
+                if self.test_active and self.spin_roi and color_mask is not None:
 
-                        if self.runout_pixels > PARAMS.VISION_RUNOUT_PIXEL_TOLERANCE:
-                            logger.error(f'VISION: Runout detected. runout_pixels={self.runout_pixels}')
-                            runout_detected = True
-                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), -1)
-                            break
+                    # --- Dynamic alignment.
+                    if not self.alignment_done and self.template_img is not None:
+                        # --- Look up for template.
+                        res = cv2.matchTemplate(frame_gray, self.template_img, cv2.TM_CCOEFF_NORMED)
+                        min_value, max_value, min_loc, max_loc = cv2.minMaxLoc(res)
 
-                # --- Runout trigger.
-                if runout_detected:
-                    self.test_result = 'FAIL_RUNOUT'
-                    self.test_active = False
-                    cv2.putText(frame, 'FAIL: RUNOUT', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
+                        if max_value > PARAMS.VISION_MIN_TRUST:
+                            current_x, current_y = max_loc
 
-                    p0 = None
-                    old_gray = None
+                            # --- Calculate delta x and y.
+                            self.fixture_dx = current_x - self.master_template_x
+                            self.fixture_dy = current_y - self.master_template_y
 
-                # --- First tracking points calculate.
-                if p0 is None:
-                    # --- Create an array of 'Black' for mask as frame form.
-                    mask = np.zeros_like(frame_gray)
-                    # --- Draw a 'White' rectangle on mask where spin roi is.
-                    mask[int(vy):int(vy + vh), int(vx):int(vx + vw)] = 255
+                            if self.fixture_dx >= 0:
+                                self.fixture_dx = min(self.fixture_dx, 8)
+                            else:
+                                self.fixture_dx = max(self.fixture_dx, -8)
 
-                    for r in self.runout_rois:
-                        # --- Get runout roi as x, y, width and height.
-                        bx, by, bw, bh = r
-                        # --- Reset to 'Black' on mask where a runout roi intersects with spin roi.
-                        if bw > 0: mask[int(by):int(by + bh), int(bx):int(bx + bw)] = 0
 
-                    # --- Create final mask.
-                    final_mask = cv2.bitwise_and(mask, color_mask)
+                            if abs(self.fixture_dx) < 40 and abs(self.fixture_dy) < 40:
+                                # --- Adjust test rois with base rois.
+                                bx, by, bw, bh = self.base_spin_roi
+                                self.spin_roi = (bx + self.fixture_dx, by + self.fixture_dy, bw, bh)
 
-                    # --- Return a list of [x, y] tracking points in current frame.
-                    p0 = cv2.goodFeaturesToTrack(frame_gray, mask=final_mask, **self.feature_params)
+                                new_runout_rois = []
+                                for runout_roi in self.base_runout_rois:
+                                    rx, ry, rw, rh = runout_roi
+                                    if rw > 0:
+                                        new_runout_rois.append((rx + self.fixture_dx, ry + self.fixture_dy, rw, rh))
+                                    else:
+                                        new_runout_rois.append(runout_roi)
+                                self.runout_rois = new_runout_rois
 
-                    # --- Save frame for next loop.
-                    old_gray = frame_gray.copy()
+                                logger.info(f"VISION: Dynamic alignment done. Offset dx={self.fixture_dx}, dy={self.fixture_dy}")
+                            else:
+                                logger.warning(f"VISION: Too much disalignment. Offset dx={self.fixture_dx}, dy={self.fixture_dy}")
+                        else:
+                            logger.warning(f"VISION: Template not found. trust={max_value:.2f}")
+                        self.alignment_done = True
 
-                # --- Optical flow calculate.
-                if p0 is not None and len(p0) > 0:
-                    # --- Get new tracking point list, status and error from optical flow calculation.
-                    p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **self.lk_params)
+                    # --- Get roi as x, y, width and height.
+                    vx, vy, vw, vh = self.spin_roi
 
-                    if p1 is not None:
-                        # --- Save only the points that opencv still tracking.
-                        good_new = p1[st == 1]
-                        good_old = p0[st == 1]
-                        dx_list = []
-                        valid_points = []
-                        runout_detected = False
+                    # --- Force clean.
+                    if self.reset_tracking_flag:
+                        movement_detected = False
+                        p0 = None
+                        old_gray = None
+                        self.reset_tracking_flag = False
 
-                        # --- Safe margins for tracking points.
-                        margin_x = int(vw * 0.15)
-                        margin_y = int(vh * 0.15)
+                    # --- Timeout detection.
+                    if (time.time() - self.test_start_time) > PARAMS.VISION_TIMEOUT_SEC:
+                        if movement_detected:
+                            self.test_result = 'FAIL_JITTERING'
+                        else:
+                            self.test_result = 'FAIL_NO_MOVEMENT'
+                        self.test_active = False
 
-                        for new, old in zip(good_new, good_old):
-                            a, b = new.ravel() # Current position.
-                            c, d = old.ravel() # Previous position.
+                    # --- Check endless missing.
+                    if mean_brightness < PARAMS.VISION_ENDLESS_DETECTION:
+                        self.test_result = 'FAIL_ENDLESS_MISSING'
+                        self.test_active = False
+                        continue
 
-                            # Check if current position of tracking point are in safe zone.
-                            in_safe_zone = (vx + margin_x < a < vx + vw - margin_x) and (vy + margin_y < b < vy + vh - margin_y)
-                            if in_safe_zone:
-                                # --- Append horizontal movement of point to dx_list.
-                                dx_list.append(a - c)
-                                valid_points.append(new)
-                                # --- Draw where point is on frame.
-                                if self.show_debug_points:
-                                    cv2.circle(frame, (int(a), int(b)), 2, (0, 255, 0), -1)
+                    # --- Runout detection.
+                    runout_detected = False
+                    for roi in self.runout_rois:
+                        bx, by, bw, bh = roi
+                        if bw > 0:
+                            # --- Select roi in thresholding mask.
+                            max_y, max_x = color_mask.shape
+                            y1 = max(0, int(by))
+                            y2 = min(max_y, int(by + bh))
+                            x1 = max(0, int(bx))
+                            x2 = min(max_x, int(bx + bw))
 
-                        if dx_list:
-                            # --- Append mean of all horizontal movement of points to direction buffer.
-                            self.direction_buffer.append(np.mean(dx_list))
-                            # --- Save last 10 point.
-                            if len(self.direction_buffer) > 10: self.direction_buffer.pop(0)
+                            # --- Get runout pixels.
+                            runout_region = color_mask[y1:y2, x1:x2]
+                            self.runout_pixels = cv2.countNonZero(runout_region)
 
-                        # --- Get mean of directional buffer. This actuates as a damper.
-                        smoothed_dx = np.mean(self.direction_buffer) if self.direction_buffer else 0
+                            if self.runout_pixels > PARAMS.VISION_RUNOUT_PIXEL_TOLERANCE:
+                                logger.error(f'VISION: Runout detected. runout_pixels={self.runout_pixels}')
+                                runout_detected = True
+                                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), -1)
+                                break
 
-                        # --- Check if there is less than 150 valid points.
-                        p0 = np.array(valid_points).reshape(-1, 1, 2)
-                        if len(valid_points) < 150:
-                            mask = np.zeros_like(frame_gray)
-                            # --- Mask recalculate with runout extraction.
-                            mask[int(vy):int(vy + vh), int(vx):int(vx + vw)] = 255
-                            for r in self.runout_rois:
-                                bx, by, bw, bh = r
-                                if bw > 0: mask[int(by):int(by + bh), int(bx):int(bx + bw)] = 0
-                            final_mask = cv2.bitwise_and(mask, color_mask)
+                    # --- Runout trigger.
+                    if runout_detected:
+                        self.test_result = 'FAIL_RUNOUT'
+                        self.test_active = False
+                        cv2.putText(frame, 'FAIL: RUNOUT', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
 
-                            # --- Get new points.
-                            p_new = cv2.goodFeaturesToTrack(frame_gray, mask=final_mask, **self.feature_params)
-                            if p_new is not None:
-                                p0 = np.vstack((p0, p_new)) if len(p0) > 0 else p_new
+                        p0 = None
+                        old_gray = None
+
+                    # --- First tracking points calculate.
+                    if p0 is None:
+                        # --- Create an array of 'Black' for mask as frame form.
+                        mask = np.zeros_like(frame_gray)
+                        # --- Draw a 'White' rectangle on mask where spin roi is.
+                        mask[int(vy):int(vy + vh), int(vx):int(vx + vw)] = 255
+
+                        for r in self.runout_rois:
+                            # --- Get runout roi as x, y, width and height.
+                            bx, by, bw, bh = r
+                            # --- Reset to 'Black' on mask where a runout roi intersects with spin roi.
+                            if bw > 0: mask[int(by):int(by + bh), int(bx):int(bx + bw)] = 0
+
+                        # --- Create final mask.
+                        final_mask = cv2.bitwise_and(mask, color_mask)
+
+                        # --- Return a list of [x, y] tracking points in current frame.
+                        p0 = cv2.goodFeaturesToTrack(frame_gray, mask=final_mask, **self.feature_params)
 
                         # --- Save frame for next loop.
                         old_gray = frame_gray.copy()
 
-                        # --- Check smooth movement logic.
-                        current_state = 'STOP'
-                        if smoothed_dx > PARAMS.VISION_RIGHT_SENSE_DETECTION:
-                            current_state = 'RIGHT'
-                        elif smoothed_dx < PARAMS.VISION_LEFT_SENSE_DETECTION:
-                            current_state = 'LEFT'
+                    # --- Optical flow calculate.
+                    if p0 is not None and len(p0) > 0:
+                        # --- Get new tracking point list, status and error from optical flow calculation.
+                        p1, st, err = cv2.calcOpticalFlowPyrLK(old_gray, frame_gray, p0, None, **self.lk_params)
 
-                        # --- Draw current state on frame.
-                        cv2.putText(frame, f'DIR: {current_state}, DX: {smoothed_dx:0.2f}, RP: {self.runout_pixels}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (51, 255, 204), 2)
+                        if p1 is not None:
+                            # --- Save only the points that opencv still tracking.
+                            good_new = p1[st == 1]
+                            good_old = p0[st == 1]
+                            dx_list = []
+                            valid_points = []
+                            runout_detected = False
 
-                        # --- Check if current state is same as previous.
-                        if current_state == self.last_stable_state and current_state != 'STOP':
-                            # --- Check if current state maintains for PARAMS.VISION_STABLE_TIME_SEC.
-                            if (time.time() - self.state_stable_start) >= PARAMS.VISION_STABLE_TIME_SEC:
-                                self.test_result = current_state
-                                self.test_active = False
-                        else:
-                            # --- Reset timer if state changed.
-                            if current_state != self.last_stable_state:
-                                self.last_stable_state = current_state
-                                self.state_stable_start = time.time()
-            else:
-                # --- Reset previous tracking points to None if no test or all points where lost.
-                if p0 is not None:
-                    p0 = None
-                    old_gray = None
+                            # --- Safe margins for tracking points.
+                            margin_x = int(vw * 0.075)
+                            margin_y = int(vh * 0.075)
 
-                # --- Alignment reset.
-                if self.alignment_done:
-                    self.spin_roi = self.base_spin_roi
-                    self.runout_rois = self.base_runout_rois.copy()
-                    self.fixture_dx = 0
-                    self.fixture_dy = 0
-                    self.alignment_done = False
+                            for new, old in zip(good_new, good_old):
+                                a, b = new.ravel() # Current position.
+                                c, d = old.ravel() # Previous position.
 
-            # --- Draw FPS.
-            alto_imagen = frame.shape[0]
-            cv2.putText(frame, f'FPS: {int(self.current_fps)}, OTSU: {int(strict_threshold)}, BRIGHT: {int(mean_brightness)}, DX: {int(self.fixture_dx)}, DY: {int(self.fixture_dy)}', (10, alto_imagen - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (51, 255, 204), 2)
+                                # Check if current position of tracking point are in safe zone.
+                                in_safe_zone = (vx + margin_x < a < vx + vw - margin_x) and (vy + margin_y < b < vy + vh - margin_y)
+                                if in_safe_zone:
+                                    # --- Append horizontal movement of point to dx_list.
+                                    dx_list.append(a - c)
+                                    valid_points.append(new)
+                                    # --- Draw where point is on frame.
+                                    if self.show_debug_points:
+                                        cv2.circle(frame, (int(a), int(b)), 2, (0, 255, 0), -1)
 
-            # --- Save frame to video buffer.
-            with self.lock:
-                self.video_buffer.append(frame.copy())
+                            if dx_list:
+                                # --- Append mean of all horizontal movement of points to direction buffer.
+                                self.direction_buffer.append(np.mean(dx_list))
+                                # --- Save last 10 point.
+                                if len(self.direction_buffer) > 10: self.direction_buffer.pop(0)
 
-            # --- Save frame for gui.
-            if self.debug_mask and self.spin_roi and color_mask is not None:
-                mask_bgr = cv2.cvtColor(color_mask, cv2.COLOR_GRAY2BGR)
-                vx, vy, vw, vh = self.spin_roi
-                cv2.rectangle(mask_bgr, (int(vx), int(vy)), (int(vx + vw), int(vy + vh)), (0, 255, 0), 2)
-                cv2.putText(mask_bgr, f'Otsu Threshold: {int(strict_threshold)}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                frame_rgb = cv2.cvtColor(mask_bgr, cv2.COLOR_BGR2RGB)
-            else:
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                            # --- Get mean of directional buffer. This actuates as a damper.
+                            smoothed_dx = np.mean(self.direction_buffer) if self.direction_buffer else 0
 
-            # --- frame resize.
-            frame_gui = cv2.resize(frame_rgb, (320, 240))
+                            # --- Check if there is less than 150 valid points.
+                            p0 = np.array(valid_points).reshape(-1, 1, 2)
+                            if len(valid_points) < 150:
+                                mask = np.zeros_like(frame_gray)
+                                # --- Mask recalculate with runout extraction.
+                                mask[int(vy):int(vy + vh), int(vx):int(vx + vw)] = 255
+                                for r in self.runout_rois:
+                                    bx, by, bw, bh = r
+                                    if bw > 0: mask[int(by):int(by + bh), int(bx):int(bx + bw)] = 0
+                                final_mask = cv2.bitwise_and(mask, color_mask)
 
-            with self.lock:
-                self.latest_frame = frame_gui
-                self.original_rgb_frame = frame_rgb
-                self.new_frame_available = True
+                                # --- Get new points.
+                                p_new = cv2.goodFeaturesToTrack(frame_gray, mask=final_mask, **self.feature_params)
+                                if p_new is not None:
+                                    p0 = np.vstack((p0, p_new)) if len(p0) > 0 else p_new
+
+                            # --- Save frame for next loop.
+                            old_gray = frame_gray.copy()
+
+                            # --- Check smooth movement logic.
+                            current_state = 'STOP'
+                            if smoothed_dx > PARAMS.VISION_RIGHT_SENSE_DETECTION:
+                                current_state = 'RIGHT'
+                                movement_detected = True
+                            elif smoothed_dx < PARAMS.VISION_LEFT_SENSE_DETECTION:
+                                current_state = 'LEFT'
+                                movement_detected = True
+
+                            # --- Draw current state on frame.
+                            cv2.putText(frame, f'DIR: {current_state}, DX: {smoothed_dx:0.2f}, RP: {self.runout_pixels}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (51, 255, 204), 2)
+
+                            # --- Check if current state is same as previous.
+                            if current_state == self.last_stable_state and current_state != 'STOP':
+                                # --- Check if current state maintains for PARAMS.VISION_STABLE_TIME_SEC.
+                                if (time.time() - self.state_stable_start) >= PARAMS.VISION_STABLE_TIME_SEC:
+                                    self.test_result = current_state
+                                    self.test_active = False
+                            else:
+                                # --- Reset timer if state changed.
+                                if current_state != self.last_stable_state:
+                                    self.last_stable_state = current_state
+                                    self.state_stable_start = time.time()
+                else:
+                    # --- Reset previous tracking points to None if no test or all points where lost.
+                    if p0 is not None:
+                        p0 = None
+                        old_gray = None
+
+                    # --- Alignment reset.
+                    if self.alignment_done:
+                        self.spin_roi = self.base_spin_roi
+                        self.runout_rois = self.base_runout_rois.copy()
+                        self.fixture_dx = 0
+                        self.fixture_dy = 0
+                        self.alignment_done = False
+
+                # --- Draw FPS.
+                alto_imagen = frame.shape[0]
+                cv2.putText(frame, f'FPS: {int(self.current_fps)}, OTSU: {int(strict_threshold)}, BRIGHT: {int(mean_brightness)}, DX: {int(self.fixture_dx)}, DY: {int(self.fixture_dy)}, MV:{int(movement_detected)}', (10, alto_imagen - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (51, 255, 204), 2)
+
+                # --- Save frame to video buffer.
+                with self.lock:
+                    self.video_buffer.append(frame.copy())
+
+                # --- Save frame for gui.
+                if self.debug_mask and self.spin_roi and color_mask is not None:
+                    mask_bgr = cv2.cvtColor(color_mask, cv2.COLOR_GRAY2BGR)
+                    vx, vy, vw, vh = self.spin_roi
+                    cv2.rectangle(mask_bgr, (int(vx), int(vy)), (int(vx + vw), int(vy + vh)), (0, 255, 0), 2)
+                    cv2.putText(mask_bgr, f'Otsu Threshold: {int(strict_threshold)}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    frame_rgb = cv2.cvtColor(mask_bgr, cv2.COLOR_BGR2RGB)
+                else:
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+                # --- frame resize.
+                frame_gui = cv2.resize(frame_rgb, (320, 240))
+
+                with self.lock:
+                    self.latest_frame = frame_gui
+                    self.original_rgb_frame = frame_rgb
+                    self.new_frame_available = True
+            except Exception as e:
+                logger.error(f'VISION: Fatal error in processing loop: {e}')
+                time.sleep(1.0)
+                continue
 
     def roi_scale(self, roi):
         """Scale roi dimension to real image size."""
@@ -476,7 +514,7 @@ class VisionSystem:
             # --- Draw safe zone roi to frame.
             temp_img = frame_bgr.copy()
             cv2.rectangle(temp_img, (int(r_rot[0]), int(r_rot[1])),
-                            (int(r_rot[0] + r_rot[2]), int(r_rot[1] + r_rot[3])), (0, 255, 0), 2)
+                            (int(r_rot[0] + r_rot[2]), int(r_rot[1] + r_rot[3])), (0, 255, 0), 1)
 
             logger.info('VISION: Select upper runout zone (Red 1) then press ENTER.')
             r_run1 = cv2.selectROI(window_name, temp_img, showCrosshair=True, fromCenter=False)
@@ -484,7 +522,7 @@ class VisionSystem:
             # --- Draw upper runout zone to frame.
             if r_run1[2] > 0 and r_run1[3] > 0:
                 cv2.rectangle(temp_img, (int(r_run1[0]), int(r_run1[1])),
-                                (int(r_run1[0] + r_run1[2]), int(r_run1[1] + r_run1[3])), (0, 0, 255), 2)
+                                (int(r_run1[0] + r_run1[2]), int(r_run1[1] + r_run1[3])), (0, 0, 255), 1)
 
             logger.info('VISION: Select lower runout zone (Red 2) then press ENTER.')
             r_run2 = cv2.selectROI(window_name, temp_img, showCrosshair=True, fromCenter=False)
@@ -492,7 +530,7 @@ class VisionSystem:
             # --- Draw lower runout zone to frame.
             if r_run2[2] > 0 and r_run2[3] > 0:
                 cv2.rectangle(temp_img, (int(r_run2[0]), int(r_run2[1])),
-                                (int(r_run2[0] + r_run2[2]), int(r_run2[1] + r_run2[3])), (0, 0, 255), 2)
+                                (int(r_run2[0] + r_run2[2]), int(r_run2[1] + r_run2[3])), (0, 0, 255), 1)
 
             # --- Select master template localization.
             master_template_roi = cv2.selectROI(window_name, temp_img, showCrosshair=True, fromCenter=False)

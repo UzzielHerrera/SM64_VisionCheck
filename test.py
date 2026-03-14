@@ -1,5 +1,6 @@
 import os
 import csv
+import queue
 import time
 import logging
 from enum import IntEnum
@@ -79,8 +80,8 @@ def log_test_results(model_name, status, reason, initial_current, final_current)
                 'Model': model_name,
                 'Status': status,
                 'Reason': reason,
-                'Initial_Current_mA': f'{(initial_current * 1000.0):0.2f}',
-                'Final_Current_mA': f'{(final_current * 1000.0):0.2f}'
+                'Initial_Current_mA': f'{initial_current:0.3f}',
+                'Final_Current_mA': f'{final_current:0.3f}'
             })
 
         logger.info(f'LOG: "{filename}" updated')
@@ -110,8 +111,6 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
     start_time = time.time()
     vision_results = None
     test_case_trigger: bool= False
-    initial_motor_current: float = 0.0
-    final_motor_current: float = 0.0
 
     # --- Manual mode variables.
     manual_source_active = False
@@ -194,8 +193,9 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
         # --- System infinite loop.
         while True:
             # --- Per Test Variables.
-            initial_motor_current: float = 0.0
-            final_motor_current: float = 0.0
+            initial_motor_current_mamp: float = 0.0
+            final_motor_current_mamp: float = 0.0
+            final_motor_voltage: float = 0.0
             set_state(State.MODEL_CHECK)
             test_in_progress = True
 
@@ -212,7 +212,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                     if current_state == State.MANUAL_MODE:
                         # --- Get current inputs state.
                         start_value = GPIO.input(PINS.START_SIGNAL)
-                        sensor_value = GPIO.input(PINS.SENSOR)
+                        sensor_value = False
                         busy_value = GPIO.input(PINS.BUSY_SIGNAL)
                         ok_value = GPIO.input(PINS.OK_SIGNAL)
                         tooling_value = GPIO.input(PINS.TOOLING_DOWN)
@@ -357,7 +357,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                                 if not fsm_queue.empty():
                                     set_state(State.MODEL_CHECK)
                                     break
-                            except:
+                            except queue.Empty:
                                 pass
 
                             # --- MPU yield delay.
@@ -372,11 +372,13 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         GPIO.output(PINS.BUSY_SIGNAL, GPIO.HIGH)
 
                         # --- Turn on relay / h-bridge.
+                        source_controller.request_control()
+                        source_controller.enable_output()
                         motor_driver.apply_power()
 
                         if stop_flag.wait(PARAMS.MOTOR_STABILIZE_SEC): continue
 
-                        initial_motor_current = source_controller.get_actual_current()
+                        initial_motor_current_mamp = source_controller.get_actual_current() * 1000.0
 
                         # --- AC power source ramp setup.
                         # if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
@@ -424,7 +426,8 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                     elif current_state == State.TEST_STOP:
                         # --- Remove energy to uap.
                         gui_queue.put('de-energizing')
-                        final_motor_current = source_controller.get_actual_current()
+                        final_motor_voltage = source_controller.get_actual_voltage()
+                        final_motor_current_mamp = source_controller.get_actual_current() * 1000.0
                         motor_driver.remove_power()
                         if isinstance(source_controller, ACSource) and current_model.motor_type.lower() == 'ac':
                             source_controller.set_frequency(current_model.start_freq)
@@ -434,20 +437,20 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                     # --- Test analyze state.
                     elif current_state == State.TEST_ANALYZE:
                         gui_queue.put('analyzing')
-                        results = {'status': 'FAIL', 'reason': 'Camera analyzing'}
+                        motor_current_str = f'{final_motor_current_mamp:0.3f}mA'
                         db_log = {
                             'equipment_number': 'TS111125',
                             'serial_num': 'NA',
                             'results': '',
                             'defect_description': '',
-                            'parameters': f'CW, 24V, {final_motor_current * 1000:0.1f}mA',
+                            'parameters': f'CW, {final_motor_voltage:0.1f}V, {motor_current_str}',
                             'model': current_model.name
                         }
 
                         # --- Decision logic.
                         if vision_results == 'FAIL_RUNOUT':
-                            vision_system.save_video(f'{current_model.name}_runout')
-                            results = {'status': 'FAIL', 'reason': 'Runout detected'}
+                            vision_system.save_video(f'{current_model.name}_Runout_{motor_current_str}')
+                            results = {'status': 'FAIL', 'reason': 'Runout'}
                             db_log['results'], db_log['defect_description'] = 'Fail', 'Runout'
 
                         elif vision_results == 'FAIL_ENDLESS_MISSING':
@@ -455,17 +458,27 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                             results = {'status': 'FAIL', 'reason': 'Endless missing'}
                             db_log['results'], db_log['defect_description'] = 'Fail', 'Falta sinfin'
 
-                        elif vision_results == 'TIMEOUT':
-                            vision_system.save_video(f'{current_model.name}_timeout_{(final_motor_current*1000.0):0.1f}mA')
-                            results = {'status': 'FAIL', 'reason': 'Motor not moved'}
-                            db_log['results'], db_log['defect_description'] = 'Fail', 'Sin movimiento'
+                        elif vision_results == 'FAIL_NO_MOVEMENT' and final_motor_current_mamp < PARAMS.PSU_MIN_MOTOR_CURRENT_MA:
+                            vision_system.save_video(f'{current_model.name}_CoilOpen_{motor_current_str}')
+                            results = {'status': 'FAIL', 'reason': 'Coil open'}
+                            db_log['results'], db_log['defect_description'] = 'Fail', 'Bobina abierta'
+
+                        elif vision_results == 'FAIL_NO_MOVEMENT' and final_motor_current_mamp >= PARAMS.PSU_MIN_MOTOR_CURRENT_MA:
+                            vision_system.save_video(f'{current_model.name}_LockedRotor_{motor_current_str}')
+                            results = {'status': 'FAIL', 'reason': 'Locked Rotor'}
+                            db_log['results'], db_log['defect_description'] = 'Fail', 'Rotor bloqueado'
+
+                        elif vision_results == 'FAIL_JITTERING':
+                            vision_system.save_video(f'{current_model.name}_Jittering_{motor_current_str}')
+                            results = {'status': 'FAIL', 'reason': 'Jittering'}
+                            db_log['results'], db_log['defect_description'] = 'Fail', 'Vibracion'
 
                         elif vision_results == 'RIGHT':
                             if current_model.direction.upper() == 'CW':
                                 results = {'status': 'PASS', 'reason': 'Good motor'}
                                 db_log['results'], db_log['defect_description'] = 'Pass', '-'
                             else:
-                                vision_system.save_video(f'{current_model.name}_invalid _direction')
+                                vision_system.save_video(f'{current_model.name}_WrongDirection_{motor_current_str}')
                                 results = {'status': 'FAIL', 'reason': 'Invalid direction'}
                                 db_log['results'], db_log['defect_description'] = 'Fail', 'Direccion invertida'
 
@@ -474,7 +487,7 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                                 results = {'status': 'PASS', 'reason': 'Good motor'}
                                 db_log['results'], db_log['defect_description'] = 'Pass', '-'
                             else:
-                                vision_system.save_video(f'{current_model.name}_invalid _direction')
+                                vision_system.save_video(f'{current_model.name}_WrongDirection_{motor_current_str}')
                                 results = {'status': 'FAIL', 'reason': 'Invalid direction'}
                                 db_log['results'], db_log['defect_description'] = 'Fail', 'Direccion invertida'
 
@@ -488,8 +501,8 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                             model_name=current_model.name,
                             status=results['status'],
                             reason=results['reason'],
-                            initial_current=initial_motor_current,
-                            final_current=final_motor_current
+                            initial_current=initial_motor_current_mamp,
+                            final_current=final_motor_current_mamp
                         )
 
                         # --- Missing part bypass.

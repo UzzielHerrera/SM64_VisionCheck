@@ -1,5 +1,21 @@
 # SM64 Change Log
 
+## V26.03.13
+### Added
+* **New Global Parameters:** Introduced `VISION_FAILED_FRAMES_THRESHOLD` and `PSU_MIN_MOTOR_CURRENT_MA` to the PAR`AMS structure in `config.py` for easier tuning without modifying core logic.
+* **Camera Auto-Reconnection Protocol:** Implemented a robust USB disconnection handler in `VisionSystem`. It tracks lost frames via `failed_frames_count` and automatically forces a camera reboot if the threshold (`VISION_FAILED_FRAMES_THRESHOLD`) is exceeded, preventing silent system freezes.
+* **Live Electrical Telemetry:** The system now captures the actual output voltage (`final_motor_voltage`) directly from the power supply just before de-energizing, sending both voltage and current (`final_motor_current_mamp`) to the MySQL database.
+* **Hardware Abstraction Expansion:** Added `get_actual_voltage` and `get_actual_current` abstract methods to the `PowerSupply` contract, with full serial communication implementation in the `BK_Serial` class (`powersupply.py`).
+
+### Changed
+* **Advanced Defect Classification (FSM):** Overhauled the decision logic to cross-reference vision data with electrical telemetry.
+  * Replaced the generic `FAIL_TIMEOUT` in the vision loop with specific `FAIL_JITTERING` (if oscillating movement is detected) and `FAIL_NO_MOVEMENT`.
+  * The FSM now intelligently splits `FAIL_NO_MOVEMENT` into two physical defects: Coil Open (if current < `PSU_MIN_MOTOR_CURRENT_MA`) and Locked Rotor (if current >= `PSU_MIN_MOTOR_CURRENT_MA`).
+* **FSM Safety Interlock:** Upgraded the test initialization sequence. The system now enforces a "power supply enable" command immediately before energizing the motor relay, acting as a failsafe against accidental manual shutoffs by operators.
+
+### Fixed
+* **OS-Independent Timestamps:** Fixed _`get_current_date_hour` in `EquipmentsConnection` to construct the 12-hour AM/PM format manually. This guarantees perfect timestamp logging regardless of the regional OS settings (Locale).
+
 ## V26.03.10
 ### Added
 * **Dynamic ROI Alignment (Fixture Tool):** Implemented a one-time template matching routine at the beginning of each test. This acts as a software fixture tool, calculating any physical offset and dynamically adjusting all ROIs from their base_roi coordinates to compensate for mechanical tolerances.

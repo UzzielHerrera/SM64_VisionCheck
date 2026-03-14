@@ -28,7 +28,7 @@ from models import MotorModel, ModelManager
 
 # --- Equipments information.
 equipment_name = 'TS111125'
-sw_version = 'v26.03.05'
+sw_version = 'v26.03.13'
 
 # --- Color constants.
 pass_color = '#57da50'

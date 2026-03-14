@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 # --- Log handler setup.
 logger = logging.getLogger('SpinCheck')
 
+
 # --- Power source contract.
 class PowerSource(ABC):
     @abstractmethod
@@ -24,6 +25,10 @@ class PowerSource(ABC):
 
     @abstractmethod
     def get_voltage(self):
+        pass
+
+    @abstractmethod
+    def get_actual_voltage(self):
         pass
 
     @abstractmethod
@@ -44,6 +49,10 @@ class PowerSource(ABC):
 
     @abstractmethod
     def disable_output(self):
+        pass
+
+    @abstractmethod
+    def get_actual_output(self):
         pass
 
 
@@ -134,15 +143,23 @@ class BK_Serial(PowerSource):
         self._send_command(f'VOLT {volts:0.2f}')
 
     def get_voltage(self):
-        """ Get voltage output of the power supply. """
+        """ Get voltage parameter of the power supply. """
         try:
             return float(self._request_command(f'VOLT?'))
         except Exception as e:
             logger.error(e)
             return 0.0
 
+    def get_actual_voltage(self):
+        """ Get the actual voltage output of the power supply. """
+        try:
+            return float(self._request_command(f'MEAS:VOLT?'))
+        except Exception as e:
+            logger.error(e)
+            return 0.0
+
     def get_actual_current(self):
-        """ Get the actual current output value. """
+        """ Get the actual current output of the power supply. """
         try:
             return float(self._request_command(f'MEAS:CURR?'))
         except Exception as e:
@@ -157,6 +174,13 @@ class BK_Serial(PowerSource):
         """ Drive the output relay of the power supply to OFF. """
         self._send_command('OUTP 0')
 
+    def get_actual_output(self):
+        """ Get the actual output state of the power supply. """
+        try:
+            return bool(self._request_command(f'OUTP?'))
+        except Exception as e:
+            logger.error(e)
+            return False
 
 # --- BK9801 serial interface
 class BK9801(ACSource, BK_Serial):
@@ -172,7 +196,7 @@ class BK9801(ACSource, BK_Serial):
         self._send_command(f'FREQ {hertz:0.2f}')
 
     def get_frequency(self):
-        """ Get the output frequency of the power supply. """
+        """ Get the frequency parameter of the power supply. """
         try:
             return float(self._request_command(f'FREQ?'))
         except Exception as e:
@@ -188,7 +212,7 @@ class BK9801(ACSource, BK_Serial):
         self._send_command(f'CONF:PROT:CURR:RMS {amps:0.2f}')
 
     def get_max_current(self):
-        """ Get the output current protection point (Irms-Protect). """
+        """ Get the current protection point  parameter of the power supply (Irms-Protect). """
         try:
             return float(self._request_command(f'CONF:PROT:CURR:RMS?'))
         except Exception as e:
@@ -241,7 +265,7 @@ class BK9201(DCSource, BK_Serial):
         self._send_command(f'CURR {amps:0.2f}')
 
     def get_max_current(self):
-        """ Get the current protection point (I-Protect). """
+        """ Get the current protection point parameter of the power supply (I-Protect). """
         try:
             return float(self._request_command(f'CURR?'))
         except Exception as e:
@@ -250,14 +274,5 @@ class BK9201(DCSource, BK_Serial):
 
 
 if __name__ == '__main__':
-    ac = BK9801(PORTS.AC_PSU_PORT)
-    ac.request_control()
-    ac.set_voltage(12.0)
-    ac.set_max_current(0.2)
-    print(ac.get_voltage())
-    ac.set_frequency(60.0)
-    ac.enable_output()
-    time.sleep(1.0)
-    print(ac.get_actual_current())
-    ac.disable_output()
+    pass
 
