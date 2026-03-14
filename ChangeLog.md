@@ -1,6 +1,6 @@
 # SM64 Change Log
 
-## V26.03.13
+## V26.03.13 (Second Production Release)
 ### Added
 * **New Global Parameters:** Introduced `VISION_FAILED_FRAMES_THRESHOLD` and `PSU_MIN_MOTOR_CURRENT_MA` to the PAR`AMS structure in `config.py` for easier tuning without modifying core logic.
 * **Camera Auto-Reconnection Protocol:** Implemented a robust USB disconnection handler in `VisionSystem`. It tracks lost frames via `failed_frames_count` and automatically forces a camera reboot if the threshold (`VISION_FAILED_FRAMES_THRESHOLD`) is exceeded, preventing silent system freezes.
@@ -102,7 +102,7 @@
     * **Reason:** Unresolvable mechanical reliability issues in the test fixture.
     * **Future Work:** Development will shift towards a non-contact **Computer Vision** system to validate motor rotation and speed.
 
-## V26.01.22
+## V26.01.22 (First Production Release)
 ### Changed
 * **Calibration Pulse Processing (`motor_calibrate`):** Enhanced the pulse extraction logic to handle data arrays more robustly.
     * **Modulo Truncation:** Implemented a filter to strictly process complete triplets. Any trailing pulses that do not form a full cycle (remainder of len % 3) are now automatically discarded instead of causing the calibration to fail.
