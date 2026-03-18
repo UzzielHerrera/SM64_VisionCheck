@@ -1,6 +1,15 @@
 # SM64 Change Log
 
-## V26.03.13 (Second Production Release)
+## V26.03.18 - Axial and Radial Play Detection
+### Added
+* **Vertical Motion Tracking:** Expanded the Optical Flow algorithm in `vision.py` to calculate and track vertical displacement vectors (`dy_list`) alongside the existing horizontal tracking (`dx`).
+* **Mechanical Shock Detection:** Introduced sudden-impact (spike) detection logic within the vision processing loop. The system now evaluates abrupt, abnormal jumps in both horizontal and vertical axes per frame, successfully filtering out permissible, smooth motor runout.
+* **New Configuration Parameters:** Added `VISION_MAX_DX_SPIKE` and `VISION_MAX_DY_SPIKE` to `config.py` (`PARAMS`), allowing engineers to easily tune the sensitivity threshold for mechanical shocks without modifying the core vision code.
+
+### Changed
+* **FSM Defect Classification (`test.py`):** Upgraded the `TEST_ANALYZE` state machine logic to handle and translate the new vision triggers.
+
+## V26.03.13 - Second Production Release
 ### Added
 * **New Global Parameters:** Introduced `VISION_FAILED_FRAMES_THRESHOLD` and `PSU_MIN_MOTOR_CURRENT_MA` to the PAR`AMS structure in `config.py` for easier tuning without modifying core logic.
 * **Camera Auto-Reconnection Protocol:** Implemented a robust USB disconnection handler in `VisionSystem`. It tracks lost frames via `failed_frames_count` and automatically forces a camera reboot if the threshold (`VISION_FAILED_FRAMES_THRESHOLD`) is exceeded, preventing silent system freezes.
@@ -93,7 +102,7 @@
     * **Robust Tracking:** Features a dynamic Point Management System that automatically culls tracking points reaching the ROI edges and respawns new features to maintain continuous flow detection.
     * **Status:** Currently serves as a development placeholder and testing ground for vision logic before integration into the main FSM.
 
-## V26.02.04 (Architecture Change)
+## V26.02.04 - Architecture Change
 ### Added
 * Historical placeholder entry marking the start of internal development of the **Computer Vision** system firmware.
 
@@ -102,7 +111,7 @@
     * **Reason:** Unresolvable mechanical reliability issues in the test fixture.
     * **Future Work:** Development will shift towards a non-contact **Computer Vision** system to validate motor rotation and speed.
 
-## V26.01.22 (First Production Release)
+## V26.01.22 - First Production Release 
 ### Changed
 * **Calibration Pulse Processing (`motor_calibrate`):** Enhanced the pulse extraction logic to handle data arrays more robustly.
     * **Modulo Truncation:** Implemented a filter to strictly process complete triplets. Any trailing pulses that do not form a full cycle (remainder of len % 3) are now automatically discarded instead of causing the calibration to fail.
@@ -251,6 +260,6 @@
   * Created `MotorModel` class to define the structure for motor test profiles.
   * Created `ModelManager` class to handle loading, saving, adding and retrieving `MotorModel` objects from `models.json` file.
 
-## v25.11.12 (Pre-Release)
+## v25.11.12 - Development Start
 ### Added
 - Historical placeholder entry marking the start of internal development and the introduction of the base station firmware.

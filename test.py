@@ -465,13 +465,23 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
 
                         elif vision_results == 'FAIL_NO_MOVEMENT' and final_motor_current_mamp >= PARAMS.PSU_MIN_MOTOR_CURRENT_MA:
                             vision_system.save_video(f'{current_model.name}_LockedRotor_{motor_current_str}')
-                            results = {'status': 'FAIL', 'reason': 'Locked Rotor'}
+                            results = {'status': 'FAIL', 'reason': 'Locked rotor'}
                             db_log['results'], db_log['defect_description'] = 'Fail', 'Rotor bloqueado'
 
                         elif vision_results == 'FAIL_JITTERING':
                             vision_system.save_video(f'{current_model.name}_Jittering_{motor_current_str}')
                             results = {'status': 'FAIL', 'reason': 'Jittering'}
                             db_log['results'], db_log['defect_description'] = 'Fail', 'Vibracion'
+
+                        elif vision_results == 'FAIL_RADIAL_PLAY':
+                            vision_system.save_video(f'{current_model.name}_RadialPLay_{motor_current_str}')
+                            results = {'status': 'FAIL', 'reason': 'Radial play'}
+                            db_log['results'], db_log['defect_description'] = 'Fail', 'Juego radial'
+
+                        elif vision_results == 'FAIL_AXIAL_PLAY':
+                            vision_system.save_video(f'{current_model.name}_AxialPlay_{motor_current_str}')
+                            results = {'status': 'FAIL', 'reason': 'Axial play'}
+                            db_log['results'], db_log['defect_description'] = 'Fail', 'Juego axial'
 
                         elif vision_results == 'RIGHT':
                             if current_model.direction.upper() == 'CW':

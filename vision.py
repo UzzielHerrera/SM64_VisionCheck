@@ -158,6 +158,8 @@ class VisionSystem:
         old_gray = None
         prev_time = time.time()
         movement_detected = False
+        current_dx, current_dy = 0.0, 0.0
+        max_dx, max_dy = 0.0, 0.0
 
         while self.streaming:
             try:
@@ -358,6 +360,7 @@ class VisionSystem:
                             good_new = p1[st == 1]
                             good_old = p0[st == 1]
                             dx_list = []
+                            dy_list = []
                             valid_points = []
                             runout_detected = False
 
@@ -373,13 +376,31 @@ class VisionSystem:
                                 in_safe_zone = (vx + margin_x < a < vx + vw - margin_x) and (vy + margin_y < b < vy + vh - margin_y)
                                 if in_safe_zone:
                                     # --- Append horizontal movement of point to dx_list.
-                                    dx_list.append(a - c)
+                                    dx_list.append(a - c)   # --- delta X.
+                                    dy_list.append(b - d)   # --- delta Y.
                                     valid_points.append(new)
                                     # --- Draw where point is on frame.
                                     if self.show_debug_points:
                                         cv2.circle(frame, (int(a), int(b)), 2, (0, 255, 0), -1)
 
-                            if dx_list:
+                            if dx_list and dy_list:
+                                current_dx = np.mean(dx_list)
+                                current_dy = np.mean(dy_list)
+
+                                if abs(current_dy) > max_dy:
+                                    max_dy = abs(current_dy)
+
+                                if abs(current_dx) > max_dx:
+                                    max_dx = abs(current_dx)
+
+                                if abs(current_dy) > PARAMS.VISION_MAX_DY_SPIKE:
+                                    self.test_result = 'FAIL_RADIAL_PLAY'
+                                    self.test_active = False
+
+                                elif abs(current_dx) > PARAMS.VISION_MAX_DX_SPIKE:
+                                    self.test_result = 'FAIL_AXIAL_PLAY'
+                                    self.test_active = False
+
                                 # --- Append mean of all horizontal movement of points to direction buffer.
                                 self.direction_buffer.append(np.mean(dx_list))
                                 # --- Save last 10 point.
@@ -417,7 +438,7 @@ class VisionSystem:
                                 movement_detected = True
 
                             # --- Draw current state on frame.
-                            cv2.putText(frame, f'DIR: {current_state}, DX: {smoothed_dx:0.2f}, RP: {self.runout_pixels}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (51, 255, 204), 2)
+                            cv2.putText(frame, f'DIR:{current_state}, DX:{current_dx:0.2f}, MAXDX:{max_dx:0.2f}, DY:{current_dy:0.2f}, MAXDY:{max_dy:0.2f}, RP:{self.runout_pixels}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (51, 255, 204), 2)
 
                             # --- Check if current state is same as previous.
                             if current_state == self.last_stable_state and current_state != 'STOP':
@@ -443,10 +464,12 @@ class VisionSystem:
                         self.fixture_dx = 0
                         self.fixture_dy = 0
                         self.alignment_done = False
+                        current_dx, current_dy = 0.0, 0.0
+                        max_dx, max_dy = 0.0, 0.0
 
                 # --- Draw FPS.
                 alto_imagen = frame.shape[0]
-                cv2.putText(frame, f'FPS: {int(self.current_fps)}, OTSU: {int(strict_threshold)}, BRIGHT: {int(mean_brightness)}, DX: {int(self.fixture_dx)}, DY: {int(self.fixture_dy)}, MV:{int(movement_detected)}', (10, alto_imagen - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (51, 255, 204), 2)
+                cv2.putText(frame, f'FPS: {int(self.current_fps)}, OTSU: {int(strict_threshold)}, BRIGHT: {int(mean_brightness)}, FDX: {int(self.fixture_dx)}, FDY: {int(self.fixture_dy)}, MV:{int(movement_detected)}', (10, alto_imagen - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (51, 255, 204), 2)
 
                 # --- Save frame to video buffer.
                 with self.lock:

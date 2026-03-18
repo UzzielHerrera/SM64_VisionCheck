@@ -28,7 +28,7 @@ from models import MotorModel, ModelManager
 
 # --- Equipments information.
 equipment_name = 'TS111125'
-sw_version = 'v26.03.13'
+sw_version = 'v26.03.18'
 
 # --- Color constants.
 pass_color = '#57da50'
@@ -464,7 +464,7 @@ class GUI(Tk):
             logger.info(f'Running from terminal')
             self['width'] = screen_width
             self['height'] = screen_height
-            # self.after(500, self.__force_fullscreen)
+            self.after(500, self.__force_fullscreen)
 
         # --- Header drawing section.
         header_frame = Frame(self, width=header_width, height=header_height, bg=frame_bg_color)
