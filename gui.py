@@ -746,14 +746,14 @@ class GUI(Tk):
         """ Add one piece to GUI's good counter. """
         text = self.lbl_good_counter['text']
         pieces = int(text.split(':')[1]) + 1
-        text = f'{text.split(':')[0]}: {pieces}'
+        text = f'{text.split(":")[0]}: {pieces}'
         self.lbl_good_counter['text'] = text
 
     def add_bads(self):
         """ Add one piece to GUI's bad counter. """
         text = self.lbl_bad_counter['text']
         pieces = int(text.split(':')[1]) + 1
-        text = f'{text.split(':')[0]}: {pieces}'
+        text = f'{text.split(":")[0]}: {pieces}'
         self.lbl_bad_counter['text'] = text
 
     def on_stop_btn_press(self, event):

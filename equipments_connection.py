@@ -1,6 +1,4 @@
 import os
-import csv
-import sys
 import time
 import json
 import queue
