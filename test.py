@@ -516,15 +516,15 @@ def finite_state_machine(gui_queue: Queue, initial_model: MotorModel, fsm_queue:
                         )
 
                         # --- Missing part bypass.
-                        if vision_results == 'FAIL_ENDLESS_MISSING':
-                            logger.info(f'FSM: Test bypass results: {results['status']} reason: {results['reason']}')
-                            gui_queue.put('failed')
-                            GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
-                            if stop_flag.wait(PARAMS.PASS_WAIT_SEC): continue
-                            GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
+                        # if vision_results == 'FAIL_ENDLESS_MISSING':
+                        #     logger.info(f'FSM: Test bypass results: {results['status']} reason: {results['reason']}')
+                        #     gui_queue.put('failed')
+                        #     GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)
+                        #     if stop_flag.wait(PARAMS.PASS_WAIT_SEC): continue
+                        #     GPIO.output(PINS.BUSY_SIGNAL, GPIO.LOW)
 
                         # --- Pass handling.
-                        elif results['status'] == 'PASS':
+                        if results['status'] == 'PASS':
                             logger.info(f'FSM: Test results: {results['status']}')
                             gui_queue.put('passed')
                             GPIO.output(PINS.OK_SIGNAL, GPIO.HIGH)

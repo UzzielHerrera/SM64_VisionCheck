@@ -1,5 +1,9 @@
 # SM64 Change Log
 
+## V26.04.01 - Disable Endless ByPass
+### Changed:
+* **Endless/Worm Gear Verification Restored:** Deactivated the temporary production bypass for the `FAIL_ENDLESS_MISSING` defect within the `TEST_ANALYZE` state of the FSM (`test.py`). The system now strictly enforces this vision check, correctly triggering a `FAIL` status and rejecting any motor missing the endless component, thereby restoring full quality control standards.
+
 ## V26.03.18 - Axial and Radial Play Detection
 ### Added
 * **Vertical Motion Tracking:** Expanded the Optical Flow algorithm in `vision.py` to calculate and track vertical displacement vectors (`dy_list`) alongside the existing horizontal tracking (`dx`).
