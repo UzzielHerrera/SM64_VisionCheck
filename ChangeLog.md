@@ -15,7 +15,7 @@
 
 ## V26.03.13 - Second Production Release
 ### Added
-* **New Global Parameters:** Introduced `VISION_FAILED_FRAMES_THRESHOLD` and `PSU_MIN_MOTOR_CURRENT_MA` to the PAR`AMS structure in `config.py` for easier tuning without modifying core logic.
+* **New Global Parameters:** Introduced `VISION_FAILED_FRAMES_THRESHOLD` and `PSU_MIN_MOTOR_CURRENT_MA` to the `PARAMS` structure in `config.py` for easier tuning without modifying core logic.
 * **Camera Auto-Reconnection Protocol:** Implemented a robust USB disconnection handler in `VisionSystem`. It tracks lost frames via `failed_frames_count` and automatically forces a camera reboot if the threshold (`VISION_FAILED_FRAMES_THRESHOLD`) is exceeded, preventing silent system freezes.
 * **Live Electrical Telemetry:** The system now captures the actual output voltage (`final_motor_voltage`) directly from the power supply just before de-energizing, sending both voltage and current (`final_motor_current_mamp`) to the MySQL database.
 * **Hardware Abstraction Expansion:** Added `get_actual_voltage` and `get_actual_current` abstract methods to the `PowerSupply` contract, with full serial communication implementation in the `BK_Serial` class (`powersupply.py`).
